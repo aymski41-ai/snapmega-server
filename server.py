@@ -3,6 +3,9 @@ import re
 import tempfile
 import subprocess
 import threading
+import urllib.request
+import urllib.parse
+import json
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -27,7 +30,7 @@ ALLOWED_HOSTS = (
     "youtube.com", "youtu.be", "youtube-nocookie.com"
 )
 
-semaphore = threading.BoundedSemaphore(2)
+semaphore = threading.BoundedSemaphore(3)
 
 class DownloadRequest(BaseModel):
     url: HttpUrl
@@ -53,6 +56,34 @@ def safe_filename(name: str, mode: str) -> str:
     stem = Path(name).stem if Path(name).suffix else name
     return (stem[:80] + suffix)
 
+def get_tiktok_direct(raw_url: str, mode: str, temp_dir: str):
+    api_url = "https://www.tikwm.com/api/"
+    data = urllib.parse.urlencode({"url": raw_url, "hd": 1}).encode("utf-8")
+    req = urllib.request.Request(api_url, data=data, headers={
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    })
+    with urllib.request.urlopen(req, timeout=20) as response:
+        res = json.loads(response.read().decode())
+    
+    if res.get("code") != 0 or "data" not in res:
+        raise Exception("TikWM API returned error")
+
+    vdata = res["data"]
+    target_url = vdata.get("music") if mode == "audio" else (vdata.get("play") or vdata.get("hdplay"))
+    if not target_url:
+        raise Exception("No download URL found")
+
+    ext = ".mp3" if mode == "audio" else ".mp4"
+    out_file = os.path.join(temp_dir, f"tiktok_{vdata.get('id', 'video')}{ext}")
+    
+    file_req = urllib.request.Request(target_url, headers={
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    })
+    with urllib.request.urlopen(file_req, timeout=60) as dl, open(out_file, "wb") as f_out:
+        f_out.write(dl.read())
+        
+    return out_file
+
 @app.get("/health")
 def health():
     return {"ok": True, "service": "snapmega-api"}
@@ -63,54 +94,61 @@ def download_media(request: DownloadRequest):
     mode = request.mode.lower().strip()
 
     if not semaphore.acquire(blocking=False):
-        raise HTTPException(status_code=429, detail="السيرفر مشغول حالياً، يرجى الانتظار ثوانٍ")
+        raise HTTPException(status_code=429, detail="السيرفر مشغول، أعد المحاولة بعد لحظات")
 
     temp_dir = tempfile.mkdtemp(prefix="snapmega_")
     try:
-        out_template = os.path.join(temp_dir, "%(id)s.%(ext)s")
-        cmd = [
-            "yt-dlp",
-            "--no-playlist",
-            "--no-warnings",
-            "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "--referer", "https://www.tiktok.com/",
-            "-o", out_template
-        ]
+        target_file = None
 
-        if mode == "audio":
-            cmd += ["-x", "--audio-format", "mp3"]
-        else:
-            # تحميل أفضل فيديو مباشر مع الصوت مدمج بصيغة MP4 القياسية
-            cmd += ["-f", "b[ext=mp4]/best[ext=mp4]/bestvideo+bestaudio/best"]
+        # استخدام محرك TikTok المباشر
+        if "tiktok.com" in raw_url:
+            try:
+                target_file = get_tiktok_direct(raw_url, mode, temp_dir)
+            except Exception as e:
+                print("TikTok direct failed, fallback to yt-dlp:", e)
 
-        cmd.append(raw_url)
+        # المحرك الاحتياطي لبقية المنصات
+        if not target_file or not os.path.isfile(target_file):
+            out_template = os.path.join(temp_dir, "%(id)s.%(ext)s")
+            cmd = [
+                "yt-dlp",
+                "--no-playlist",
+                "--no-warnings",
+                "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                "-o", out_template
+            ]
 
-        run = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=120)
+            if mode == "audio":
+                cmd += ["-x", "--audio-format", "mp3"]
+            else:
+                cmd += ["-f", "best[ext=mp4]/bestvideo+bestaudio/best"]
 
-        # البحث عن الملف الناتج
-        files = [
-            os.path.join(temp_dir, f)
-            for f in os.listdir(temp_dir)
-            if os.path.isfile(os.path.join(temp_dir, f)) and not f.endswith(".part")
-        ]
-        
-        if not files:
-            raise HTTPException(status_code=400, detail="تعذر استخراج الفيديو، تأكد أن الفيديو ليس خاصاً")
+            cmd.append(raw_url)
+            subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=120)
 
-        target_file = files[0]
-        
-        # فحص حجم الملف؛ إذا كان أقل من 20 كيلوبايت فهو ملف تالف
-        if os.path.getsize(target_file) < 20 * 1024:
+            files = [
+                os.path.join(temp_dir, f)
+                for f in os.listdir(temp_dir)
+                if os.path.isfile(os.path.join(temp_dir, f)) and not f.endswith(".part")
+            ]
+            if files:
+                target_file = files[0]
+
+        if not target_file or not os.path.isfile(target_file):
+            raise HTTPException(status_code=400, detail="تعذر استخراج الفيديو، تأكد من أن الرابط عام وليس حساباً خاصاً")
+
+        if os.path.getsize(target_file) < 5 * 1024:
             raise HTTPException(status_code=400, detail="الملف المستخرج تالف أو محمي من المصدر")
 
         final_filename = safe_filename(os.path.basename(target_file), mode)
-
         return FileResponse(
             path=target_file,
             filename=final_filename,
             media_type="audio/mpeg" if mode == "audio" else "video/mp4"
         )
-    except subprocess.TimeoutExpired:
-        raise HTTPException(status_code=504, detail="استغرق التحميل وقتاً طويلاً من الخادم")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="حدث خطأ غير متوقع أثناء معالجة الطلب")
     finally:
         semaphore.release()
