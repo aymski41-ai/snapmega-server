@@ -51,7 +51,7 @@ def safe_filename(name: str, mode: str) -> str:
         name = "snapmega_download"
     suffix = ".mp3" if mode == "audio" else ".mp4"
     stem = Path(name).stem if Path(name).suffix else name
-    return (stem[:100] + suffix)
+    return (stem[:80] + suffix)
 
 @app.get("/health")
 def health():
@@ -63,40 +63,46 @@ def download_media(request: DownloadRequest):
     mode = request.mode.lower().strip()
 
     if not semaphore.acquire(blocking=False):
-        raise HTTPException(status_code=429, detail="السيرفر مشغول حالياً، يرجى المحاولة بعد لحظات")
+        raise HTTPException(status_code=429, detail="السيرفر مشغول حالياً، يرجى الانتظار ثوانٍ")
 
     temp_dir = tempfile.mkdtemp(prefix="snapmega_")
     try:
-        out_template = os.path.join(temp_dir, "%(title).80s.%(ext)s")
+        out_template = os.path.join(temp_dir, "%(id)s.%(ext)s")
         cmd = [
             "yt-dlp",
             "--no-playlist",
             "--no-warnings",
-            "--force-overwrites",
+            "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "--referer", "https://www.tiktok.com/",
             "-o", out_template
         ]
 
         if mode == "audio":
-            cmd += ["-x", "--audio-format", "mp3", "--audio-quality", "0"]
+            cmd += ["-x", "--audio-format", "mp3"]
         else:
-            cmd += [
-                "-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
-                "--merge-output-format", "mp4",
-                "--recode-video", "mp4"
-            ]
+            # تحميل أفضل فيديو مباشر مع الصوت مدمج بصيغة MP4 القياسية
+            cmd += ["-f", "b[ext=mp4]/best[ext=mp4]/bestvideo+bestaudio/best"]
 
         cmd.append(raw_url)
 
-        run = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=180)
+        run = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=120)
 
-        if run.returncode != 0:
-            raise HTTPException(status_code=400, detail="فشل استخراج الفيديو؛ تأكد أن الرابط عام ومتاح للجميع")
-
-        files = [os.path.join(temp_dir, f) for f in os.listdir(temp_dir) if os.path.isfile(os.path.join(temp_dir, f))]
+        # البحث عن الملف الناتج
+        files = [
+            os.path.join(temp_dir, f)
+            for f in os.listdir(temp_dir)
+            if os.path.isfile(os.path.join(temp_dir, f)) and not f.endswith(".part")
+        ]
+        
         if not files:
-            raise HTTPException(status_code=500, detail="لم يتم العثور على ملف بعد التحميل")
+            raise HTTPException(status_code=400, detail="تعذر استخراج الفيديو، تأكد أن الفيديو ليس خاصاً")
 
         target_file = files[0]
+        
+        # فحص حجم الملف؛ إذا كان أقل من 20 كيلوبايت فهو ملف تالف
+        if os.path.getsize(target_file) < 20 * 1024:
+            raise HTTPException(status_code=400, detail="الملف المستخرج تالف أو محمي من المصدر")
+
         final_filename = safe_filename(os.path.basename(target_file), mode)
 
         return FileResponse(
@@ -105,6 +111,6 @@ def download_media(request: DownloadRequest):
             media_type="audio/mpeg" if mode == "audio" else "video/mp4"
         )
     except subprocess.TimeoutExpired:
-        raise HTTPException(status_code=504, detail="استغرق التحميل وقتاً طويلاً")
+        raise HTTPException(status_code=504, detail="استغرق التحميل وقتاً طويلاً من الخادم")
     finally:
         semaphore.release()
