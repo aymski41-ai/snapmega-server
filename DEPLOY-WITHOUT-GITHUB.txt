@@ -1,0 +1,13 @@
+SNAPMEGA — DEPLOY BACKEND WITHOUT GITHUB
+
+1. Open https://huggingface.co/ and create/sign in to a personal account.
+2. Create a new Space. Choose Docker as the Space SDK, and set visibility to Public if you want the free public Space.
+3. Upload the files from this package into the Space repository: Dockerfile, README.md, server.py, requirements.txt. Do NOT upload index.html to the backend Space; your frontend stays on Cloudflare Pages.
+4. In Space Settings, add variable FRONTEND_ORIGIN with value https://snapmega.pages.dev. If your site uses a different domain, use that exact origin instead.
+5. Wait for the Space to build and start. Open the Space's public URL with /health appended. It should show {"ok":true,"service":"snapmega-api"}.
+6. Copy the Space domain, usually shaped like https://USERNAME-SPACENAME.hf.space.
+7. In the frontend index.html, replace https://YOUR_BACKEND_URL in SNAPMEGA_API_BASE with your exact Space URL, with no trailing slash.
+8. Upload the updated index.html to your existing Cloudflare Pages project and redeploy.
+9. Test with a public video link you have permission to download.
+
+IMPORTANT: This package does not itself publish the API. A host account and deployment steps are still required. Free hosting may sleep or restrict CPU/bandwidth, and some platform links may fail because of login, age, privacy, DRM, or platform changes.

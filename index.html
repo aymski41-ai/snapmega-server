@@ -1,0 +1,1786 @@
+﻿<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SnapMega - Universal Media Downloader & Creator Suite</title>
+    <!-- كود إثبات ملكية جوجل -->
+    <meta name="google-site-verification" content="UuxIyPYvGb2FpR_NxGneNdjXI1ZCXplLo9NMe0ZGBAI" />
+    <meta name="description" content="SnapMega - Professional suite for digital creators: Fast HD media downloading, AI talking photo studio, grammar auditor, and SEO keyword optimizer.">
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+    <style>
+        :root {
+            --bg-base: #06090e;
+            --bg-card: rgba(16, 23, 38, 0.75);
+            --border-glass: rgba(255, 255, 255, 0.08);
+            --primary-emerald: #10b981;
+            --emerald-glow: rgba(16, 185, 129, 0.25);
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', 'Tajawal', sans-serif;
+            transition: all 0.2s ease-in-out;
+        }
+
+        body {
+            background-color: var(--bg-base);
+            color: var(--text-main);
+            overflow-x: hidden;
+            background-image: 
+                radial-gradient(circle at 15% 15%, rgba(16, 185, 129, 0.08) 0%, transparent 40%),
+                radial-gradient(circle at 85% 85%, rgba(59, 130, 246, 0.06) 0%, transparent 40%);
+            min-height: 100vh;
+        }
+
+        .creator-pro-bar {
+            background: rgba(12, 19, 34, 0.95);
+            border-bottom: 1px solid rgba(16, 185, 129, 0.2);
+            text-align: center;
+            padding: 9px 16px;
+            font-size: 13px;
+            font-weight: 500;
+            color: #d1fae5;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            letter-spacing: 0.3px;
+        }
+
+        .creator-pro-bar .badge-dot {
+            width: 8px;
+            height: 8px;
+            background-color: var(--primary-emerald);
+            border-radius: 50%;
+            display: inline-block;
+            box-shadow: 0 0 8px var(--primary-emerald);
+        }
+
+        .top-utility-bar {
+            background: rgba(10, 15, 26, 0.9);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border-glass);
+            padding: 10px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 12px;
+            font-size: 13px;
+        }
+
+        .locale-time-cluster {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            flex-wrap: wrap;
+        }
+
+        .custom-select {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-glass);
+            color: #fff;
+            padding: 6px 12px;
+            border-radius: 8px;
+            outline: none;
+            cursor: pointer;
+            font-size: 13px;
+        }
+
+        .custom-select option {
+            background: #0d1527;
+            color: #fff;
+        }
+
+        .clock-badge, .date-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            border-radius: 8px;
+            background: rgba(16, 185, 129, 0.08);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            color: #34d399;
+            font-weight: 600;
+            font-feature-settings: "tnum";
+        }
+
+        header {
+            padding: 18px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            max-width: 1250px;
+            margin: auto;
+        }
+
+        .brand-logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            text-decoration: none;
+            color: #fff;
+            font-size: 22px;
+            font-weight: 800;
+        }
+
+        .brand-logo i {
+            color: var(--primary-emerald);
+            filter: drop-shadow(0 0 10px var(--primary-emerald));
+        }
+
+        nav.nav-links {
+            display: flex;
+            gap: 18px;
+        }
+
+        nav.nav-links a {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 600;
+            padding: 6px 12px;
+            border-radius: 8px;
+        }
+
+        nav.nav-links a:hover {
+            color: #fff;
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .hero-section {
+            text-align: center;
+            padding: 35px 20px 20px;
+            max-width: 900px;
+            margin: auto;
+        }
+
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 16px;
+            border-radius: 50px;
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--primary-emerald);
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            border: 1px solid rgba(16, 185, 129, 0.2);
+        }
+
+        h1.hero-title {
+            font-size: 36px;
+            font-weight: 800;
+            line-height: 1.3;
+            margin-bottom: 12px;
+            background: linear-gradient(135deg, #ffffff 40%, var(--primary-emerald) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        p.hero-subtitle {
+            color: var(--text-muted);
+            font-size: 15px;
+            margin-bottom: 30px;
+        }
+
+        .downloader-box {
+            background: var(--bg-card);
+            border: 1px solid var(--border-glass);
+            border-radius: 20px;
+            padding: 24px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+            backdrop-filter: blur(16px);
+        }
+
+        .platform-tabs {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .tab-btn {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--border-glass);
+            color: var(--text-muted);
+            padding: 10px 18px;
+            border-radius: 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .tab-btn * {
+            pointer-events: none;
+        }
+
+        .tab-btn.active {
+            background: var(--primary-emerald) !important;
+            color: #06090e !important;
+            border-color: var(--primary-emerald) !important;
+            box-shadow: 0 0 15px var(--emerald-glow);
+        }
+
+        .tab-btn.active i {
+            color: #06090e !important;
+        }
+
+        .input-row {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .url-input {
+            flex: 1;
+            min-width: 280px;
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid var(--border-glass);
+            color: #fff;
+            padding: 14px 20px;
+            border-radius: 14px;
+            font-size: 15px;
+            outline: none;
+        }
+
+        .url-input:focus {
+            border-color: var(--primary-emerald);
+            box-shadow: 0 0 12px var(--emerald-glow);
+        }
+
+        .btn-action {
+            background: var(--primary-emerald);
+            color: #06090e;
+            border: none;
+            padding: 14px 28px;
+            border-radius: 14px;
+            font-size: 15px;
+            font-weight: 700;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            justify-content: center;
+            text-decoration: none;
+        }
+
+        .btn-action:hover {
+            filter: brightness(1.1);
+            box-shadow: 0 0 20px var(--emerald-glow);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.08);
+            color: #fff;
+            border: 1px solid var(--border-glass);
+            padding: 10px 16px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            justify-content: center;
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.15);
+            border-color: rgba(255, 255, 255, 0.3);
+        }
+
+        .clip-cutter-options {
+            display: none;
+            margin-top: 16px;
+            padding: 16px;
+            background: rgba(0, 0, 0, 0.25);
+            border-radius: 14px;
+            border: 1px dashed rgba(16, 185, 129, 0.3);
+            text-align: inherit;
+        }
+
+        .clip-cutter-options.active {
+            display: block;
+        }
+
+        .time-inputs {
+            display: flex;
+            gap: 12px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+
+        .time-box {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 6px 12px;
+            border-radius: 8px;
+            border: 1px solid var(--border-glass);
+        }
+
+        .time-box input {
+            background: transparent;
+            border: none;
+            color: #fff;
+            width: 70px;
+            outline: none;
+            text-align: center;
+        }
+
+        .result-card {
+            display: none;
+            margin-top: 24px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border-glass);
+            border-radius: 16px;
+            padding: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        .avatar-studio-section {
+            max-width: 1200px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+
+        .avatar-studio-card {
+            background: var(--bg-card);
+            border: 1px solid rgba(16, 185, 129, 0.35);
+            border-radius: 24px;
+            padding: 28px;
+            box-shadow: 0 15px 45px rgba(0, 0, 0, 0.6);
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 28px;
+            backdrop-filter: blur(20px);
+        }
+
+        @media (max-width: 868px) {
+            .avatar-studio-card {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .avatar-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .avatar-presets {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .preset-thumb {
+            width: 55px;
+            height: 55px;
+            border-radius: 12px;
+            cursor: pointer;
+            border: 2px solid transparent;
+            object-fit: cover;
+        }
+
+        .preset-thumb.active {
+            border-color: var(--primary-emerald);
+            box-shadow: 0 0 12px var(--emerald-glow);
+        }
+
+        .file-upload-box {
+            border: 2px dashed var(--border-glass);
+            padding: 12px;
+            border-radius: 12px;
+            text-align: center;
+            cursor: pointer;
+            font-size: 13px;
+            color: var(--text-muted);
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        .file-upload-box:hover {
+            border-color: var(--primary-emerald);
+            color: #fff;
+        }
+
+        .avatar-viewport {
+            background: #000;
+            border-radius: 18px;
+            border: 1px solid var(--border-glass);
+            position: relative;
+            min-height: 340px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .avatar-canvas-container {
+            position: relative;
+            width: 250px;
+            height: 250px;
+            border-radius: 50%;
+            overflow: hidden;
+            border: 4px solid rgba(16, 185, 129, 0.3);
+            box-shadow: 0 0 30px rgba(0, 0, 0, 0.8);
+        }
+
+        #avatarCanvas {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .sound-wave-bar {
+            position: absolute;
+            bottom: 12px;
+            display: flex;
+            gap: 4px;
+            align-items: flex-end;
+            height: 20px;
+        }
+
+        .wave-line {
+            width: 3px;
+            background: var(--primary-emerald);
+            height: 4px;
+            border-radius: 2px;
+        }
+
+        .sound-wave-bar.active .wave-line {
+            animation: bounceWave 0.5s infinite alternate ease-in-out;
+        }
+
+        .sound-wave-bar.active .wave-line:nth-child(2) { animation-delay: 0.1s; }
+        .sound-wave-bar.active .wave-line:nth-child(3) { animation-delay: 0.2s; }
+        .sound-wave-bar.active .wave-line:nth-child(4) { animation-delay: 0.3s; }
+        .sound-wave-bar.active .wave-line:nth-child(5) { animation-delay: 0.4s; }
+
+        @keyframes bounceWave {
+            0% { height: 4px; }
+            100% { height: 20px; }
+        }
+
+        .recording-indicator {
+            display: none;
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            background: rgba(239, 68, 68, 0.2);
+            border: 1px solid #ef4444;
+            color: #ef4444;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 4px 10px;
+            border-radius: 20px;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .recording-indicator.active {
+            display: inline-flex;
+        }
+
+        .rec-dot {
+            width: 8px;
+            height: 8px;
+            background: #ef4444;
+            border-radius: 50%;
+            animation: pulseRec 1s infinite;
+        }
+
+        @keyframes pulseRec {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        .tools-grid {
+            max-width: 1200px;
+            margin: 40px auto;
+            padding: 0 20px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 22px;
+        }
+
+        .tool-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-glass);
+            border-radius: 18px;
+            padding: 22px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .tool-card:hover {
+            border-color: rgba(16, 185, 129, 0.4);
+            transform: translateY(-2px);
+        }
+
+        .tool-icon {
+            font-size: 24px;
+            color: var(--primary-emerald);
+        }
+
+        .tool-card textarea {
+            width: 100%;
+            height: 95px;
+            background: rgba(0, 0, 0, 0.35);
+            border: 1px solid var(--border-glass);
+            border-radius: 10px;
+            color: #fff;
+            padding: 10px;
+            resize: none;
+            outline: none;
+            font-size: 13px;
+        }
+
+        .tool-stat-badge {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-glass);
+            border-radius: 8px;
+            padding: 8px 12px;
+            font-size: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .report-feedback-box {
+            background: rgba(0, 0, 0, 0.45);
+            border: 1px dashed var(--border-glass);
+            border-radius: 10px;
+            padding: 10px;
+            font-size: 12px;
+            max-height: 120px;
+            overflow-y: auto;
+            color: #d1fae5;
+            display: none;
+        }
+
+        .services-section {
+            max-width: 1200px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+
+        .services-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 18px;
+        }
+
+        .service-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-glass);
+            border-radius: 16px;
+            padding: 18px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .btn-whatsapp {
+            background: #25d366;
+            color: #06090e;
+            text-decoration: none;
+            padding: 8px 14px;
+            border-radius: 10px;
+            font-weight: 700;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+            justify-content: center;
+        }
+
+        .faq-section {
+            max-width: 850px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+
+        .faq-item {
+            background: var(--bg-card);
+            border: 1px solid var(--border-glass);
+            border-radius: 12px;
+            margin-bottom: 12px;
+            padding: 16px 20px;
+            cursor: pointer;
+        }
+
+        .faq-question {
+            font-weight: 700;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .faq-answer {
+            display: none;
+            margin-top: 10px;
+            color: var(--text-muted);
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .faq-item.active .faq-answer {
+            display: block;
+        }
+
+        footer {
+            border-top: 1px solid var(--border-glass);
+            text-align: center;
+            padding: 24px;
+            color: var(--text-muted);
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="creator-pro-bar">
+        <span class="badge-dot"></span>
+        <span id="txt_welcome_bar">منصة SnapMega الاحترافية لصناع المحتوى | بيئة عمل رقمية متكاملة لإنتاج وتدقيق الوسائط وتحسين السيو</span>
+    </div>
+
+    <div class="top-utility-bar">
+        <div class="locale-time-cluster">
+            <select class="custom-select" id="countrySelect" onchange="updateLocaleDetails()">
+                <option value="America/New_York" data-code="us">🇺🇸 United States</option>
+                <option value="Europe/London" data-code="uk">🇬🇧 United Kingdom</option>
+                <option value="Europe/Paris" data-code="fr">🇫🇷 France</option>
+                <option value="Europe/Berlin" data-code="de">🇩🇪 Germany</option>
+                <option value="Africa/Algiers" data-code="dz">🇩🇿 الجزائر (Algeria)</option>
+                <option value="Africa/Cairo" data-code="eg">🇪🇬 مصر (Egypt)</option>
+                <option value="Asia/Riyadh" data-code="sa">🇸🇦 السعودية (KSA)</option>
+                <option value="Europe/Moscow" data-code="ru">🇷🇺 Russia</option>
+            </select>
+            <div class="clock-badge">
+                <i class="fa-regular fa-clock"></i>
+                <span id="liveClock">00:00:00</span>
+            </div>
+            <div class="date-badge">
+                <i class="fa-regular fa-calendar-days"></i>
+                <span id="liveDate">2026-10-18</span>
+            </div>
+        </div>
+
+        <div style="margin: auto;">
+            <select class="custom-select" id="langSelect" onchange="applyLanguage(this.value)">
+                <option value="en">English (US)</option>
+                <option value="ar">العربية (Arabic)</option>
+                <option value="fr">Français (FR)</option>
+                <option value="es">Español (ES)</option>
+                <option value="de">Deutsch (DE)</option>
+                <option value="ru">Русский (RU)</option>
+            </select>
+        </div>
+    </div>
+
+    <header>
+        <a href="#" class="brand-logo">
+            <i class="fa-solid fa-bolt"></i>
+            <span>SnapMega</span>
+        </a>
+        <nav class="nav-links">
+            <a href="#downloader" id="nav_down">Media Downloader</a>
+            <a href="#avatar-studio" id="nav_avatar">AI Talking Studio</a>
+            <a href="#creator-tools" id="nav_tools">Creator Tools & SEO</a>
+            <a href="#services-hub" id="nav_serv">Services Hub</a>
+            <a href="#faq" id="nav_faq">FAQ</a>
+        </nav>
+    </header>
+
+    <!-- منطقة التحميل الحقيقية -->
+    <section class="hero-section" id="downloader">
+        <div class="hero-badge"><i class="fa-solid fa-shield-halved"></i> <span id="txt_badge">Fast, Multi-Engine Auto-Fallback System</span></div>
+        <h1 class="hero-title" id="txt_hero_title">High-Definition Media & Video Downloader</h1>
+        <p class="hero-subtitle" id="txt_hero_sub">Download without watermarks • TikTok, Instagram, Facebook, YouTube & Live Stream Trimming</p>
+
+        <div class="downloader-box">
+            <div class="platform-tabs">
+                <button class="tab-btn active" onclick="switchPlatform('tiktok', event)"><i class="fa-brands fa-tiktok" style="color: #00f2fe;"></i> TikTok</button>
+                <button class="tab-btn" onclick="switchPlatform('instagram', event)"><i class="fa-brands fa-instagram" style="color: #e1306c;"></i> Instagram</button>
+                <button class="tab-btn" onclick="switchPlatform('facebook', event)"><i class="fa-brands fa-facebook" style="color: #1877f2;"></i> Facebook</button>
+                <button class="tab-btn" onclick="switchPlatform('youtube', event)"><i class="fa-brands fa-youtube" style="color: #ff0000;"></i> YouTube</button>
+                <button class="tab-btn" onclick="switchPlatform('mp3', event)"><i class="fa-solid fa-music" style="color: #10b981;"></i> MP3 Audio</button>
+                <button class="tab-btn" onclick="switchPlatform('live', event)"><i class="fa-solid fa-scissors" style="color: #f59e0b;"></i> <span id="tab_live">Live Clipper</span></button>
+            </div>
+
+            <div class="input-row">
+                <input type="text" class="url-input" id="mediaUrl" placeholder="Paste video or live stream link here...">
+                <button class="btn-action" id="btnProcessDownload" onclick="processDownload()"><i class="fa-solid fa-download"></i> <span id="downloadBtnText">Download Now</span></button>
+            </div>
+
+            <div class="clip-cutter-options" id="clipCutterOptions">
+                <p style="font-size: 13px; font-weight: 600; color: #f59e0b;" id="txt_clip_instruction"><i class="fa-solid fa-scissors"></i> Set start and end timestamp to trim the live stream:</p>
+                <div class="time-inputs">
+                    <div class="time-box"><span id="lbl_from">From:</span> <input type="text" value="00:10" id="clipStart"></div>
+                    <div class="time-box"><span id="lbl_to">To:</span> <input type="text" value="01:00" id="clipEnd"></div>
+                    <div class="time-box"><span id="lbl_ratio">Format:</span> <span style="color:#10b981">9:16 Shorts/Reels</span></div>
+                </div>
+            </div>
+
+            <div class="result-card" id="resultCard" style="display:none;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <div style="width:48px; height:48px; background:rgba(16,185,129,0.1); border-radius:10px; display:flex; align-items:center; justify-content:center; color:var(--primary-emerald); font-size:20px;">
+                        <i class="fa-solid fa-circle-check"></i>
+                    </div>
+                    <div style="text-align: initial;">
+                        <h4 id="videoTitle">Media Ready for Download</h4>
+                        <p style="font-size: 12px; color: var(--text-muted);" id="videoDetails">Quality: 1080p Full HD • No Watermark</p>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <a href="#" target="_blank" class="btn-action" style="padding:10px 18px; font-size:13px;" id="btnDownloadDirect"><i class="fa-solid fa-arrow-down"></i> <span id="btn_save">Download File</span></a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- استوديو الأفاتار -->
+    <section class="avatar-studio-section" id="avatar-studio">
+        <div class="avatar-studio-card">
+            <div class="avatar-controls">
+                <div>
+                    <h2 id="txt_avatar_heading" style="font-size: 22px; font-weight: 800; color: #fff; margin-bottom: 6px;">
+                        <i class="fa-solid fa-film" style="color:var(--primary-emerald)"></i> AI Talking Photo to Video
+                    </h2>
+                    <p style="font-size: 13px; color: var(--text-muted);" id="txt_avatar_sub">
+                        Upload a photo, enter your script, and generate an AI-driven talking avatar video with lip-sync.
+                    </p>
+                </div>
+
+                <div>
+                    <label style="font-size: 12px; font-weight: 700; color: #d1fae5; display:block; margin-bottom: 8px;" id="lbl_choose_avatar">1. Select Avatar or Upload Your Photo:</label>
+                    <div class="avatar-presets">
+                        <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80" class="preset-thumb active" onclick="setAvatarPreset(this.src, this)" alt="Avatar 1">
+                        <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80" class="preset-thumb" onclick="setAvatarPreset(this.src, this)" alt="Avatar 2">
+                        <img src="https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&auto=format&fit=crop&q=80" class="preset-thumb" onclick="setAvatarPreset(this.src, this)" alt="Avatar 3">
+                        
+                        <div class="file-upload-box" onclick="document.getElementById('avatarFileInput').click()">
+                            <i class="fa-solid fa-cloud-arrow-up"></i> <span id="btn_upload_photo">Upload Image</span>
+                            <input type="file" id="avatarFileInput" accept="image/*" style="display:none;" onchange="handleCustomAvatarUpload(event)">
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <label style="font-size: 12px; font-weight: 700; color: #d1fae5; display:block; margin-bottom: 8px;" id="lbl_enter_script">2. Enter Script & Voice Tone:</label>
+                    <textarea id="avatarScript" class="url-input" style="width:100%; height:85px; resize:none; padding:12px; font-size:13px;" placeholder="Type what you want this avatar to speak in the video...">SnapMega - The modern content creation suite.</textarea>
+                </div>
+
+                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                    <select class="custom-select" id="voiceSelect" style="flex:1;">
+                        <option value="male" id="opt_male">Male Voice (Professional)</option>
+                        <option value="female" id="opt_female">Female Voice (Natural)</option>
+                    </select>
+                    <button class="btn-action" style="padding:10px 20px; font-size:14px;" onclick="playAvatarTalking(false)">
+                        <i class="fa-solid fa-play"></i> <span id="btn_play_avatar">Speak & Preview</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="avatar-viewport">
+                <div class="recording-indicator" id="recIndicator">
+                    <span class="rec-dot"></span> <span>REC LIVE</span>
+                </div>
+
+                <div class="avatar-canvas-container" id="avatarBox">
+                    <canvas id="avatarCanvas" width="300" height="300"></canvas>
+                </div>
+
+                <div class="sound-wave-bar" id="soundWaves">
+                    <div class="wave-line"></div>
+                    <div class="wave-line"></div>
+                    <div class="wave-line"></div>
+                    <div class="wave-line"></div>
+                    <div class="wave-line"></div>
+                </div>
+
+                <div style="margin-top: 18px; width: 85%; display: flex; justify-content: center;">
+                    <button class="btn-action" id="btnExportVideo" style="width: 100%; font-size: 13px; padding: 12px;" onclick="startRecordAndDownload()">
+                        <i class="fa-solid fa-video"></i> <span id="btn_export_video">Generate & Export Video (MP4)</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- شبكة الأدوات الفعالة -->
+    <section class="tools-grid" id="creator-tools">
+        
+        <!-- أداة التدقيق اللغوي -->
+        <div class="tool-card" style="border-color: rgba(16, 185, 129, 0.45);">
+            <div class="tool-icon"><i class="fa-solid fa-spell-check"></i></div>
+            <h3 id="t1_title">Grammar & Readability Auditor</h3>
+            <p style="font-size: 12px; color: var(--text-muted);" id="t1_sub">Live grammar checking, readability scoring and instant spelling optimization.</p>
+            <textarea id="grammarInput" placeholder="Type or paste your content here for instant analysis..."></textarea>
+            
+            <div style="display:flex; gap:8px;">
+                <button class="btn-action" style="flex:1; padding:10px; font-size:13px;" onclick="auditGrammar(true)">
+                    <i class="fa-solid fa-magnifying-glass"></i> <span id="btn_audit_now">Audit Content</span>
+                </button>
+                <button class="btn-secondary" style="flex:1;" onclick="autoFixGrammar()">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i> <span id="btn_fix">Auto-Correct</span>
+                </button>
+            </div>
+
+            <div class="tool-stat-badge">
+                <span><span id="lbl_readability">Readability:</span> <strong id="readabilityScore" style="color:#10b981;">100%</strong></span>
+                <span><span id="lbl_errors">Errors:</span> <strong id="errorCount" style="color:#ef4444;">0</strong></span>
+                <span><span id="lbl_words">Words:</span> <strong id="wordCount">0</strong></span>
+            </div>
+
+            <div class="report-feedback-box" id="grammarReport"></div>
+        </div>
+
+        <!-- أداة فحص السيو -->
+        <div class="tool-card" style="border-color: rgba(59, 130, 246, 0.45);">
+            <div class="tool-icon"><i class="fa-solid fa-chart-pie" style="color:#60a5fa;"></i></div>
+            <h3 id="t2_title">SEO Keyword Density Optimizer</h3>
+            <p style="font-size: 12px; color: var(--text-muted);" id="t2_sub">Balance keyword frequency and verify Google first-page ranking standards.</p>
+            <input type="text" id="targetKeyword" class="custom-select" style="width:100%;" placeholder="Focus Keyword (e.g., video downloader)">
+            <textarea id="seoArticleContent" placeholder="Paste full article text to calculate keyword density..."></textarea>
+            
+            <button class="btn-action" style="padding:10px; font-size:13px; background:#3b82f6;" onclick="analyzeSeoArticle(true)">
+                <i class="fa-solid fa-chart-simple"></i> <span id="btn_seo_audit">Analyze SEO Density</span>
+            </button>
+
+            <div class="tool-stat-badge">
+                <span><span id="lbl_density">Density:</span> <strong id="keywordDensity" style="color:#60a5fa;">0.0%</strong></span>
+                <span><span id="lbl_status">Status:</span> <strong id="seoStatusBadge" style="color:#f59e0b;">Waiting for input</strong></span>
+            </div>
+
+            <div class="report-feedback-box" id="seoReport"></div>
+        </div>
+
+        <!-- أداة إعادة الصياغة -->
+        <div class="tool-card">
+            <div class="tool-icon"><i class="fa-solid fa-repeat"></i></div>
+            <h3 id="t3_title">AI Content Rewriter</h3>
+            <p style="font-size: 12px; color: var(--text-muted);" id="t3_sub">Create unique and engaging content variations to avoid duplicate content penalties.</p>
+            <textarea id="rewriteInput" placeholder="Enter text to rewrite..."></textarea>
+            <button class="btn-action" style="padding:10px; font-size:13px;" onclick="runRewriter()"><i class="fa-solid fa-rotate"></i> <span id="btn_rewrite">Rewrite Text</span></button>
+        </div>
+
+        <!-- أفكار الريلز -->
+        <div class="tool-card">
+            <div class="tool-icon"><i class="fa-solid fa-lightbulb"></i></div>
+            <h3 id="t4_title">Viral Reels Hooks Generator</h3>
+            <p style="font-size: 12px; color: var(--text-muted);" id="t4_sub">Irresistible opening lines to capture attention in the first 3 seconds.</p>
+            <div id="hookDisplay" style="background:rgba(0,0,0,0.3); border:1px solid var(--border-glass); padding:10px; border-radius:8px; font-size:13px; min-height:85px; color:#34d399;">
+                Click below to generate high-performing video hooks...
+            </div>
+            <button class="btn-action" style="padding:10px; font-size:13px;" onclick="generateHook()"><i class="fa-solid fa-bolt"></i> <span id="btn_hook">Generate Hook</span></button>
+        </div>
+
+        <!-- الهاشتاغات -->
+        <div class="tool-card">
+            <div class="tool-icon"><i class="fa-solid fa-hashtag"></i></div>
+            <h3 id="t5_title">Trending Hashtags Generator</h3>
+            <p style="font-size: 12px; color: var(--text-muted);" id="t5_sub">Extract trending tags to boost discovery on Explore and FYP pages.</p>
+            <div id="tagsDisplay" style="background:rgba(0,0,0,0.3); border:1px solid var(--border-glass); padding:10px; border-radius:8px; font-size:13px; min-height:85px; color:#60a5fa;">
+                #viral #explore #fyp #trending #snapmega
+            </div>
+            <button class="btn-action" style="padding:10px; font-size:13px;" onclick="generateTags()"><i class="fa-solid fa-tags"></i> <span id="btn_tags">Extract Tags</span></button>
+        </div>
+
+        <!-- محاكي نتائج جوجل -->
+        <div class="tool-card">
+            <div class="tool-icon"><i class="fa-solid fa-magnifying-glass-chart"></i></div>
+            <h3 id="t6_title">Google SERP Simulator</h3>
+            <p style="font-size: 12px; color: var(--text-muted);" id="t6_sub">Preview how your metadata and title appear in Google search results.</p>
+            <input type="text" id="seoTitleInput" class="custom-select" style="width:100%; margin-bottom:6px;" value="SnapMega - Professional Media Downloader" oninput="updateSeoPreview()">
+            <div style="background:#fff; color:#1a0dab; padding:12px; border-radius:8px; font-size:13px; text-align:left;" id="serpPreviewBox">
+                <div style="font-size:11px; color:#202124;">snapmega.pages.dev</div>
+                <div style="font-weight:700; color:#1a0dab;" id="seoPreviewTitle">SnapMega - Professional Media Downloader</div>
+                <div style="font-size:11px; color:#4d5156;">Fast, watermark-free media downloader with live SEO & content tools...</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- سوق الخدمات -->
+    <section class="services-section" id="services-hub">
+        <div style="margin-bottom: 20px;">
+            <h2 id="txt_serv_heading"><i class="fa-solid fa-briefcase" style="color:var(--primary-emerald)"></i> Creator Services Marketplace</h2>
+            <p style="font-size:13px; color:var(--text-muted);" id="txt_serv_sub">Connect directly with certified specialists via WhatsApp</p>
+        </div>
+
+        <div class="services-grid">
+            <div class="service-card">
+                <div>
+                    <span style="font-size:11px; background:rgba(16,185,129,0.1); color:var(--primary-emerald); padding:3px 8px; border-radius:6px;" id="tag_srv1">Editing & Motion</span>
+                    <h4 style="margin:8px 0;" id="title_srv1">Short-Form Video Production</h4>
+                    <p style="font-size:12px; color:var(--text-muted);" id="desc_srv1">Turn long live streams into high-converting TikTok and Reels clips.</p>
+                </div>
+                <a href="https://wa.me/213555000000?text=Hello,%20I%20am%20inquiring%20about%20video%20production" target="_blank" class="btn-whatsapp"><i class="fa-brands fa-whatsapp"></i> <span id="wa_srv1">Contact via WhatsApp</span></a>
+            </div>
+
+            <div class="service-card">
+                <div>
+                    <span style="font-size:11px; background:rgba(59,130,246,0.1); color:#60a5fa; padding:3px 8px; border-radius:6px;" id="tag_srv2">SEO Ranking</span>
+                    <h4 style="margin:8px 0;" id="title_srv2">Search Engine Optimization</h4>
+                    <p style="font-size:12px; color:var(--text-muted);" id="desc_srv2">Keyword architecture and technical setup for top Google search visibility.</p>
+                </div>
+                <a href="https://wa.me/213555000000?text=Hello,%20I%20am%20inquiring%20about%20SEO" target="_blank" class="btn-whatsapp"><i class="fa-brands fa-whatsapp"></i> <span id="wa_srv2">Contact via WhatsApp</span></a>
+            </div>
+
+            <div class="service-card">
+                <div>
+                    <span style="font-size:11px; background:rgba(245,158,11,0.1); color:#f59e0b; padding:3px 8px; border-radius:6px;" id="tag_srv3">Web Engineering</span>
+                    <h4 style="margin:8px 0;" id="title_srv3">Cloud Architecture & Web Apps</h4>
+                    <p style="font-size:12px; color:var(--text-muted);" id="desc_srv3">Ultra-fast static web apps and serverless deployment on Cloudflare.</p>
+                </div>
+                <a href="https://wa.me/213555000000?text=Hello,%20I%20am%20inquiring%20about%20web%20development" target="_blank" class="btn-whatsapp"><i class="fa-brands fa-whatsapp"></i> <span id="wa_srv3">Contact via WhatsApp</span></a>
+            </div>
+        </div>
+    </section>
+
+    <!-- الأسئلة الشائعة -->
+    <section class="faq-section" id="faq">
+        <h2 style="text-align:center; margin-bottom:20px;" id="faq_heading"><i class="fa-regular fa-circle-question" style="color:var(--primary-emerald)"></i> Frequently Asked Questions</h2>
+        
+        <div class="faq-item" onclick="toggleFaq(this)">
+            <div class="faq-question"><span id="faq_q1">Is the media downloader and creator tool suite free?</span> <i class="fa-solid fa-chevron-down"></i></div>
+            <div class="faq-answer" id="faq_a1">Yes, SnapMega provides free access to all downloading tools, AI talking photo studio, stream trimmers, and SEO auditing features with no subscription required.</div>
+        </div>
+
+        <div class="faq-item" onclick="toggleFaq(this)">
+            <div class="faq-question"><span id="faq_q2">What is the recommended SEO keyword density?</span> <i class="fa-solid fa-chevron-down"></i></div>
+            <div class="faq-answer" id="faq_a2">A healthy density ranges between 1.0% and 2.0% of total article word count to avoid algorithmic penalties from Google.</div>
+        </div>
+    </section>
+
+    <footer>
+        <p id="txt_footer">© 2026 SnapMega. All Rights Reserved • Professional Creator Suite & Global Services Hub</p>
+    </footer>
+
+    <script>
+        const translations = {
+            en: {
+                dir: 'ltr',
+                welcome_bar: "SnapMega Professional Creator Suite | An all-in-one digital environment for media production, auditing & SEO",
+                nav_down: "Media Downloader",
+                nav_avatar: "AI Talking Studio",
+                nav_tools: "Creator Tools & SEO",
+                nav_serv: "Services Hub",
+                nav_faq: "FAQ",
+                badge: "Fast, Multi-Engine Auto-Fallback System",
+                hero_title: "High-Definition Media & Video Downloader",
+                hero_sub: "Download without watermarks • TikTok, Instagram, Facebook, YouTube & Live Stream Trimming",
+                placeholder_url: "Paste video or live stream link here...",
+                btn_down: "Download Now",
+                tab_live: "Live Clipper",
+                clip_instruction: "Set start and end timestamp to trim the live stream:",
+                lbl_from: "From:",
+                lbl_to: "To:",
+                lbl_ratio: "Format:",
+                btn_save: "Download File",
+                avatar_heading: "AI Talking Photo to Video",
+                avatar_sub: "Upload a photo, enter your script, and generate an AI-driven talking avatar video with lip-sync.",
+                lbl_choose_avatar: "1. Select Avatar or Upload Your Photo:",
+                btn_upload_photo: "Upload Image",
+                lbl_enter_script: "2. Enter Script & Voice Tone:",
+                ph_avatar_script: "Type what you want this avatar to speak in the video...",
+                opt_male: "Male Voice (Professional)",
+                opt_female: "Female Voice (Natural)",
+                btn_play_avatar: "Speak & Preview",
+                btn_export_video: "Generate & Export Video (MP4)",
+                t1_title: "Grammar & Readability Auditor",
+                t1_sub: "Live grammar checking, readability scoring and instant spelling optimization.",
+                ph_grammar: "Type or paste your content here for instant analysis...",
+                btn_audit_now: "Audit Content",
+                btn_fix: "Auto-Correct",
+                lbl_readability: "Readability:",
+                lbl_errors: "Errors:",
+                lbl_words: "Words:",
+                t2_title: "SEO Keyword Density Optimizer",
+                t2_sub: "Balance keyword frequency and verify Google first-page ranking standards.",
+                ph_kw: "Focus Keyword (e.g., video downloader)",
+                ph_article: "Paste full article text to calculate keyword density...",
+                btn_seo_audit: "Analyze SEO Density",
+                lbl_density: "Density:",
+                lbl_status: "Status:",
+                status_waiting: "Waiting for input",
+                status_good: "Optimal for Google ✅",
+                status_over: "High density (Risk) ⚠️",
+                status_low: "Needs more occurrences ℹ️",
+                t3_title: "AI Content Rewriter",
+                t3_sub: "Create unique and engaging content variations to avoid duplicate content penalties.",
+                ph_rewrite: "Enter text to rewrite...",
+                btn_rewrite: "Rewrite Text",
+                t4_title: "Viral Reels Hooks Generator",
+                t4_sub: "Irresistible opening lines to capture attention in the first 3 seconds.",
+                btn_hook: "Generate Hook",
+                t5_title: "Trending Hashtags Generator",
+                t5_sub: "Extract trending tags to boost discovery on Explore and FYP pages.",
+                btn_tags: "Extract Tags",
+                t6_title: "Google SERP Simulator",
+                t6_sub: "Preview how your metadata and title appear in Google search results.",
+                serv_heading: "Creator Services Marketplace",
+                serv_sub: "Connect directly with certified specialists via WhatsApp",
+                tag_srv1: "Editing & Motion",
+                title_srv1: "Short-Form Video Production",
+                desc_srv1: "Turn long live streams into high-converting TikTok and Reels clips.",
+                wa_srv1: "Contact via WhatsApp",
+                tag_srv2: "SEO Ranking",
+                title_srv2: "Search Engine Optimization",
+                desc_srv2: "Keyword architecture and technical setup for top Google search visibility.",
+                wa_srv2: "Contact via WhatsApp",
+                tag_srv3: "Web Engineering",
+                title_srv3: "Cloud Architecture & Web Apps",
+                desc_srv3: "Ultra-fast static web apps and serverless deployment on Cloudflare.",
+                wa_srv3: "Contact via WhatsApp",
+                faq_heading: "Frequently Asked Questions",
+                faq_q1: "Is the media downloader and creator tool suite free?",
+                faq_a1: "Yes, SnapMega provides free access to all downloading tools, AI talking photo studio, stream trimmers, and SEO auditing features with no subscription required.",
+                faq_q2: "What is the recommended SEO keyword density?",
+                faq_a2: "A healthy density ranges between 1.0% and 2.0% of total article word count to avoid algorithmic penalties from Google.",
+                txt_footer: "© 2026 SnapMega. All Rights Reserved • Professional Creator Suite & Global Services Hub"
+            },
+            ar: {
+                dir: 'rtl',
+                welcome_bar: "منصة SnapMega الاحترافية لصناع المحتوى | بيئة عمل رقمية متكاملة لإنتاج وتدقيق الوسائط وتحسين السيو",
+                nav_down: "تنزيل الوسائط",
+                nav_avatar: "استوديو الصور المتكلمة",
+                nav_tools: "أدوات المحتوى والسيو",
+                nav_serv: "سوق الخدمات",
+                nav_faq: "الأسئلة الشائعة",
+                badge: "نظام التحميل الذاتي فائق السرعة - حماية ضد التوقف",
+                hero_title: "تنزيل الفيديوهات بجودة فائقة Full HD & 4K",
+                hero_sub: "بدون علامة مائية • تيك توك، إنستغرام، فيسبوك، يوتيوب، وقص أجزاء البث المباشر",
+                placeholder_url: "ألصق رابط الفيديو أو البث المباشر هنا...",
+                btn_down: "تحميل الآن",
+                tab_live: "قص البث المباشر",
+                clip_instruction: "حدد مدة اللقطة التي تريد قصها من البث المباشر:",
+                lbl_from: "من:",
+                lbl_to: "إلى:",
+                lbl_ratio: "الأبعاد:",
+                btn_save: "تنزيل الفيديو الآن",
+                avatar_heading: "تحويل الصورة إلى فيديو ناطق بالذكاء الاصطناعي",
+                avatar_sub: "ارفع صورتك، اكتب النص، وشاهد الأفاتار يتحدث ويحرك فمه بتزامن كامل مع إمكانية تصدير الفيديو.",
+                lbl_choose_avatar: "1. اختر شخصية جاهزة أو ارفع صورتك الخاصة:",
+                btn_upload_photo: "رفع صورة خاصة",
+                lbl_enter_script: "2. اكتب النص ونبرة الصوت:",
+                ph_avatar_script: "اكتب ما تريده أن ينطقه الأفاتار في الفيديو بالذكاء الاصطناعي...",
+                opt_male: "صوت رجالي (احترافي)",
+                opt_female: "صوت أنثوي (طبيعي)",
+                btn_play_avatar: "نطق ومعاينة مباشرة",
+                btn_export_video: "توليد وتصدير الفيديو (MP4)",
+                t1_title: "مدقق الأخطاء اللغوية وسهولة القراءة",
+                t1_sub: "فحص فوري للهمزات، التنوين، الأخطاء الإملائية وقياس سلاسة القراءة.",
+                ph_grammar: "اكتب أو الصق نص المقال أو المنشور هنا للتدقيق الفوري...",
+                btn_audit_now: "فحص وتدقيق النص الآن",
+                btn_fix: "تطبيق التصحيح التلقائي",
+                lbl_readability: "سلاسة النص:",
+                lbl_errors: "الأخطاء:",
+                lbl_words: "الكلمات:",
+                t2_title: "محلل السيو وكثافة الكلمات المفتاحية",
+                t2_sub: "وزن المقال مع الكلمة المفتاحية لتصدر نتائج الصفحة الأولى في جوجل.",
+                ph_kw: "الكلمة المفتاحية المستهدفة (مثال: تنزيل فيديو)",
+                ph_article: "الصق نص المقال كاملاً لفحص معايير السيو وكثافة الكلمة...",
+                btn_seo_audit: "تحليل معايير السيو وتوزيع الكلمات",
+                lbl_density: "الكثافة:",
+                lbl_status: "حالة السيو:",
+                status_waiting: "بانتظار المدخلات",
+                status_good: "ممتاز ومطابق لجوجل ✅",
+                status_over: "حشو زائد (خطر) ⚠️",
+                status_low: "تحتاج ذكر الكلمة أكثر ℹ️",
+                t3_title: "إعادة صياغة النصوص بالذكاء الاصطناعي",
+                t3_sub: "صياغة جديدة حصرية تجعل مقالك فريداً وغير مكرر.",
+                ph_rewrite: "ضع النص المراد إعادة صياغته هنا...",
+                btn_rewrite: "إعادة صياغة فورية",
+                t4_title: "مولد خطافات الريلز (Viral Hooks)",
+                t4_sub: "أقوى جمل البداية لجذب المشاهدين في أول 3 ثوانٍ.",
+                btn_hook: "توليد فكرة جديدة",
+                t5_title: "مولد الهاشتاغات الفيروسية",
+                t5_sub: "استخرج أقوى الوسوم النشطة الآن لتصدر الترند.",
+                btn_tags: "استخراج وسوم جديدة",
+                t6_title: "محاكي نتائج جوجل (SEO SERP)",
+                t6_sub: "معاينة شكل العنوان والوصف كما يظهر للباحثين.",
+                serv_heading: "سوق الخدمات العالمي لصناع المحتوى",
+                serv_sub: "تواصل مباشرة مع أصحاب الخبرة لإنجاز مهامك عبر واتساب",
+                tag_srv1: "مونتاج وتيك توك",
+                title_srv1: "مونتاج وقص مقاطع ريلز احترافية",
+                desc_srv1: "تحويل البثوث والفيديوهات الطويلة إلى مقاطع قصيرة فيروسية.",
+                wa_srv1: "تواصل عبر واتساب",
+                tag_srv2: "سيو وتصدر جوجل",
+                title_srv2: "تهيئة المواقع والمقالات لتصدر نتائج البحث",
+                desc_srv2: "دراسة كلمات مفتاحية وحل مشاكل الفهرسة والأرشفة.",
+                wa_srv2: "تواصل عبر واتساب",
+                tag_srv3: "برمجة سريعة",
+                title_srv3: "برمجة أدوات ويب واستضافة سحابية فائقة",
+                desc_srv3: "إنشاء صفحات أحادية الكود ونشرها على كلاودفلير بأعلى أداء.",
+                wa_srv3: "تواصل عبر واتساب",
+                faq_heading: "الأسئلة الشائعة",
+                faq_q1: "هل أدوات التدقيق اللغوي وفحص السيو واستوديو الصور مجانية؟",
+                faq_a1: "نعم، جميع أدوات صانع المحتوى بما فيها استوديو الأفاتار مجانية بالكامل ومفتوحة دون قيود.",
+                faq_q2: "ما هي النسبة المثالية لكثافة الكلمة المفتاحية في السيو؟",
+                faq_a2: "تنصح خوارزميات جوجل بنسبة تتراوح بين 1% إلى 2% من إجمالي كلمات المقال لتجنب الحشو وضمان تصدر المقال بطريقة طبيعية.",
+                txt_footer: "© 2026 SnapMega. جميع الحقوق محفوظة • بوابة صانع المحتوى وسوق الخدمات العالمي"
+            },
+            fr: {
+                dir: 'ltr',
+                welcome_bar: "Suite professionnelle SnapMega pour créateurs | Environnement numérique complet pour les médias et le SEO",
+                nav_down: "Téléchargeur",
+                nav_avatar: "Studio Avatar IA",
+                nav_tools: "Outils Créateur & SEO",
+                nav_serv: "Services",
+                nav_faq: "FAQ",
+                badge: "Système multi-moteurs ultra-rapide et auto-réparateur",
+                hero_title: "Téléchargeur Multimédia Haute Définition",
+                hero_sub: "Sans filigrane • TikTok, Instagram, Facebook, YouTube et découpe de direct",
+                placeholder_url: "Collez le lien de la vidéo ou du direct ici...",
+                btn_down: "Télécharger",
+                tab_live: "Coupeur de Direct",
+                clip_instruction: "Définissez le début et la fin pour couper l'extrait du live:",
+                lbl_from: "De:",
+                lbl_to: "À:",
+                lbl_ratio: "Format:",
+                btn_save: "Télécharger le fichier",
+                avatar_heading: "Photo Parlante IA en Vidéo",
+                avatar_sub: "Téléversez une photo, écrivez votre texte et générez un avatar animé parlant avec synchronisation labiale.",
+                lbl_choose_avatar: "1. Choisissez un avatar ou téléversez votre photo:",
+                btn_upload_photo: "Téléverser photo",
+                lbl_enter_script: "2. Écrivez le script et choisissez la voix:",
+                ph_avatar_script: "Écrivez ce que l'avatar doit dire...",
+                opt_male: "Voix d'homme (Professionnelle)",
+                opt_female: "Voix de femme (Naturelle)",
+                btn_play_avatar: "Parler & Aperçu",
+                btn_export_video: "Générer et Exporter Vidéo (MP4)",
+                t1_title: "Auditeur de Grammaire et Lisibilité",
+                t1_sub: "Vérification en direct, score de lisibilité et correction instantanée.",
+                ph_grammar: "Tapez ou collez votre contenu ici pour analyse...",
+                btn_audit_now: "Auditer le texte",
+                btn_fix: "Correction Automatique",
+                lbl_readability: "Lisibilité:",
+                lbl_errors: "Erreurs:",
+                lbl_words: "Mots:",
+                t2_title: "Optimiseur de Densité SEO",
+                t2_sub: "Équilibrez vos mots-clés selon les standards de Google.",
+                ph_kw: "Mot-clé cible (ex. téléchargeur vidéo)",
+                ph_article: "Collez l'article complet ici pour calculer la densité...",
+                btn_seo_audit: "Analyser la densité",
+                lbl_density: "Densité:",
+                lbl_status: "Statut:",
+                status_waiting: "En attente de texte",
+                status_good: "Optimal pour Google ✅",
+                status_over: "Densité trop élevée ⚠️",
+                status_low: "Augmentez les répétitions ℹ️",
+                t3_title: "Réécriture de Contenu IA",
+                t3_sub: "Générez des variantes uniques pour éviter le contenu dupliqué.",
+                ph_rewrite: "Entrez le texte à reformuler...",
+                btn_rewrite: "Reformuler",
+                t4_title: "Générateur d'Accroches Réels",
+                t4_sub: "Phrases d'impact pour capter l'attention dans les 3 premières secondes.",
+                btn_hook: "Nouvelle Accroche",
+                t5_title: "Générateur de Hashtags Viraux",
+                t5_sub: "Extrayez les tags tendance pour maximiser la visibilité.",
+                btn_tags: "Générer Tags",
+                t6_title: "Simulateur SERP Google",
+                t6_sub: "Visualisez l'apparence de votre titre et description dans Google.",
+                serv_heading: "Place de Marché des Créateurs",
+                serv_sub: "Contactez directement des spécialistes certifiés via WhatsApp",
+                tag_srv1: "Montage Vidéo",
+                title_srv1: "Production de Vidéos Courtes",
+                desc_srv1: "Transformez vos flux en direct en Reels captivants.",
+                wa_srv1: "Contacter sur WhatsApp",
+                tag_srv2: "Référencement SEO",
+                title_srv2: "Optimisation pour Google",
+                desc_srv2: "Mots-clés et configuration technique pour la 1ère page.",
+                wa_srv2: "Contacter sur WhatsApp",
+                tag_srv3: "Ingénierie Web",
+                title_srv3: "Applications Cloud & Sites",
+                desc_srv3: "Déploiement ultra-rapide sur l'infrastructure Cloudflare.",
+                wa_srv3: "Contacter sur WhatsApp",
+                faq_heading: "Questions Fréquemment Posées",
+                faq_q1: "Le service est-il entièrement gratuit?",
+                faq_a1: "Oui, SnapMega offre tous les outils de téléchargement et d'audit SEO gratuitement.",
+                faq_q2: "Quelle est la densité de mot-clé recommandée?",
+                faq_a2: "Une densité saine se situe entre 1,0% et 2,0% du total des mots.",
+                txt_footer: "© 2026 SnapMega. Tous droits réservés • Plateforme professionnelle pour créateurs"
+            },
+            es: {
+                dir: 'ltr',
+                welcome_bar: "Suite profesional SnapMega para creadores | Entorno digital completo para medios y SEO",
+                nav_down: "Descargador",
+                nav_avatar: "Estudio Avatar IA",
+                nav_tools: "Herramientas & SEO",
+                nav_serv: "Servicios",
+                nav_faq: "Preguntas",
+                badge: "Sistema multiautónomo de alta velocidad",
+                hero_title: "Descargador de Medios en Alta Definición",
+                hero_sub: "Sin marcas de agua • TikTok, Instagram, Facebook, YouTube y corte de streams",
+                placeholder_url: "Pega el enlace del video o transmisión aquí...",
+                btn_down: "Descargar",
+                tab_live: "Corte de Directo",
+                clip_instruction: "Establece el tiempo de inicio y fin para recortar:",
+                lbl_from: "Desde:",
+                lbl_to: "Hasta:",
+                lbl_ratio: "Formato:",
+                btn_save: "Descargar archivo",
+                avatar_heading: "Foto Hablante IA a Video",
+                avatar_sub: "Sube una foto, escribe tu texto y genera un video con avatar animado y sincronización labial.",
+                lbl_choose_avatar: "1. Elige un avatar o sube tu foto:",
+                btn_upload_photo: "Subir imagen",
+                lbl_enter_script: "2. Escribe el guión y voz:",
+                ph_avatar_script: "Escribe lo que el avatar debe decir...",
+                opt_male: "Voz de hombre",
+                opt_female: "Voz de mujer",
+                btn_play_avatar: "Hablar y Vista Previa",
+                btn_export_video: "Generar Video (MP4)",
+                t1_title: "Auditor Gramatical y Legibilidad",
+                t1_sub: "Corrección en vivo, puntuación de legibilidad y optimización.",
+                ph_grammar: "Escribe o pega tu texto aquí...",
+                btn_audit_now: "Auditar contenido",
+                btn_fix: "Autocorrección",
+                lbl_readability: "Legibilidad:",
+                lbl_errors: "Errores:",
+                lbl_words: "Palabras:",
+                t2_title: "Optimizador de Densidad SEO",
+                t2_sub: "Equilibra tus palabras clave según los estándares de Google.",
+                ph_kw: "Palabra clave objetivo",
+                ph_article: "Pega el artículo para calcular la densidad...",
+                btn_seo_audit: "Analizar Densidad",
+                lbl_density: "Densidad:",
+                lbl_status: "Estado:",
+                status_waiting: "Esperando texto",
+                status_good: "Óptimo para Google ✅",
+                status_over: "Demasiada densidad ⚠️",
+                status_low: "Requiere más menciones ℹ️",
+                t3_title: "Reescritor de Contenido IA",
+                t3_sub: "Genera variantes únicas para evitar contenido duplicado.",
+                ph_rewrite: "Ingresa el texto a reescribir...",
+                btn_rewrite: "Reescribir",
+                t4_title: "Ganchos Virales para Reels",
+                t4_sub: "Frases de apertura para captar la atención en 3 segundos.",
+                btn_hook: "Generar Gancho",
+                t5_title: "Generador de Hashtags",
+                t5_sub: "Extrae etiquetas en tendencia para mayor alcance.",
+                btn_tags: "Generar Tags",
+                t6_title: "Simulador SERP Google",
+                t6_sub: "Previsualiza cómo se verá tu título en Google.",
+                serv_heading: "Mercado de Servicios para Creadores",
+                serv_sub: "Contacta a especialistas certificados por WhatsApp",
+                tag_srv1: "Edición de Video",
+                title_srv1: "Producción de Videos Cortos",
+                desc_srv1: "Convierte directos largos en clips virales de TikTok.",
+                wa_srv1: "Contactar por WhatsApp",
+                tag_srv2: "Posicionamiento SEO",
+                title_srv2: "Optimización de Motores de Búsqueda",
+                desc_srv2: "Estrategia de palabras clave para la primera página.",
+                wa_srv2: "Contactar por WhatsApp",
+                tag_srv3: "Desarrollo Web",
+                title_srv3: "Aplicaciones Web en la Nube",
+                desc_srv3: "Despliegue ultrarrápido en Cloudflare.",
+                wa_srv3: "Contactar por WhatsApp",
+                faq_heading: "Preguntas Frecuentes",
+                faq_q1: "¿Es gratis el descargador y el conjunto de herramientas?",
+                faq_a1: "Sí, SnapMega ofrece acceso gratuito e ilimitado a todas sus herramientas.",
+                faq_q2: "¿Cuál es la densidad de palabras clave recomendada?",
+                faq_a2: "La densidad recomendada está entre el 1.0% y el 2.0% del total de palabras.",
+                txt_footer: "© 2026 SnapMega. Todos los derechos reservados • Plataforma Global para Creadores"
+            },
+            de: {
+                dir: 'ltr',
+                welcome_bar: "SnapMega Creator Suite | Digitale Umgebung für Medienproduktion und SEO",
+                nav_down: "Downloader",
+                nav_avatar: "KI Avatar Studio",
+                nav_tools: "Creator-Tools & SEO",
+                nav_serv: "Dienstleistungen",
+                nav_faq: "FAQ",
+                badge: "Schnelles Multi-Engine-Ausfallsystem",
+                hero_title: "HD Medien- & Video-Downloader",
+                hero_sub: "Ohne Wasserzeichen • TikTok, Instagram, Facebook, YouTube & Livestream-Trimmer",
+                placeholder_url: "Video- oder Livestream-Link hier einfügen...",
+                btn_down: "Herunterladen",
+                tab_live: "Live-Cutter",
+                clip_instruction: "Start- und Endzeitpunkt zum Zuschneiden festlegen:",
+                lbl_from: "Von:",
+                lbl_to: "Bis:",
+                lbl_ratio: "Format:",
+                btn_save: "Datei herunterladen",
+                avatar_heading: "KI Sprechendes Foto zu Video",
+                avatar_sub: "Foto hochladen, Skript eingeben und sprechenden KI-Avatar mit Lippen-Synchronisation erstellen.",
+                lbl_choose_avatar: "1. Avatar wählen oder Foto hochladen:",
+                btn_upload_photo: "Bild hochladen",
+                lbl_enter_script: "2. Skript & Stimme eingeben:",
+                ph_avatar_script: "Geben Sie ein, was der Avatar sagen soll...",
+                opt_male: "Männerstimme",
+                opt_female: "Frauenstimme",
+                btn_play_avatar: "Sprechen & Vorschau",
+                btn_export_video: "Video generieren (MP4)",
+                t1_title: "Grammatik- & Lesbarkeitsprüfung",
+                t1_sub: "Echtzeit-Grammatikprüfung und Lesbarkeitsbewertung.",
+                ph_grammar: "Text hier zur Prüfung einfügen...",
+                btn_audit_now: "Text prüfen",
+                btn_fix: "Automatisch korrigieren",
+                lbl_readability: "Lesbarkeit:",
+                lbl_errors: "Fehler:",
+                lbl_words: "Wörter:",
+                t2_title: "SEO-Keyword-Dichte-Optimierer",
+                t2_sub: "Überprüfen Sie die Keyword-Dichte nach Google-Standards.",
+                ph_kw: "Fokus-Keyword",
+                ph_article: "Artikeltext zur Berechnung einfügen...",
+                btn_seo_audit: "Dichte analysieren",
+                lbl_density: "Dichte:",
+                lbl_status: "Status:",
+                status_waiting: "Wartet auf Text",
+                status_good: "Optimal für Google ✅",
+                status_over: "Zu hohe Dichte ⚠️",
+                status_low: "Mehr Erwähnungen nötig ℹ️",
+                t3_title: "KI-Textumschreiber",
+                t3_sub: "Einzigartige Varianten erstellen gegen Duplicate Content.",
+                ph_rewrite: "Text zum Umschreiben eingeben...",
+                btn_rewrite: "Umschreiben",
+                t4_title: "Virale Hooks für Reels",
+                t4_sub: "Einstiegssätze für die ersten 3 Sekunden.",
+                btn_hook: "Hook generieren",
+                t5_title: "Hashtag-Generator",
+                t5_sub: "Trend-Tags für höhere Reichweite generieren.",
+                btn_tags: "Tags generieren",
+                t6_title: "Google SERP Simulator",
+                t6_sub: "Vorschau Ihrer Snippets in den Suchergebnissen.",
+                serv_heading: "Creator-Marktplatz",
+                serv_sub: "Direkter Kontakt zu Spezialisten via WhatsApp",
+                tag_srv1: "Videoschnitt",
+                title_srv1: "Kurzvideoproduktion",
+                desc_srv1: "Livestreams in virale Reels verwandeln.",
+                wa_srv1: "Via WhatsApp kontaktieren",
+                tag_srv2: "Suchmaschinenoptimierung",
+                title_srv2: "Google Ranking Optimierung",
+                desc_srv2: "Keyword-Strategie für Seite 1.",
+                wa_srv2: "Via WhatsApp kontaktieren",
+                tag_srv3: "Web-Entwicklung",
+                title_srv3: "Cloud-Anwendungen",
+                desc_srv3: "Blitzschnelle Bereitstellung auf Cloudflare.",
+                wa_srv3: "Via WhatsApp kontaktieren",
+                faq_heading: "Häufig gestellte Fragen",
+                faq_q1: "Sind die Tools kostenlos?",
+                faq_a1: "Ja, alle Downloader- und Creator-Tools sind vollständig kostenlos.",
+                faq_q2: "Was ist die empfohlene Keyword-Dichte?",
+                faq_a2: "Empfohlen wird ein Wert zwischen 1,0 % und 2,0 %.",
+                txt_footer: "© 2026 SnapMega. Alle Rechte vorbehalten"
+            },
+            ru: {
+                dir: 'ltr',
+                welcome_bar: "Профессиональная платформа SnapMega | Среда для создания медиа и SEO-анализа",
+                nav_down: "Загрузчик",
+                nav_avatar: "Аватар Студия",
+                nav_tools: "Инструменты и SEO",
+                nav_serv: "Услуги",
+                nav_faq: "FAQ",
+                badge: "Быстрая система с авто-переключением серверов",
+                hero_title: "Загрузчик видео высокого разрешения",
+                hero_sub: "Без водяных знаков • TikTok, Instagram, Facebook, YouTube и нарезка стримов",
+                placeholder_url: "Вставьте ссылку на видео или стрим...",
+                btn_down: "Скачать",
+                tab_live: "Нарезка стримов",
+                clip_instruction: "Укажите начало и конец для нарезки клипа:",
+                lbl_from: "С:",
+                lbl_to: "По:",
+                lbl_ratio: "Формат:",
+                btn_save: "Скачать файл",
+                avatar_heading: "ИИ Оживляющее Фото в Видео",
+                avatar_sub: "Загрузите фото, введите текст и создайте видео говорящего аватара с синхронизацией губ.",
+                lbl_choose_avatar: "1. Выберите аватар или загрузите свое фото:",
+                btn_upload_photo: "Загрузить фото",
+                lbl_enter_script: "2. Введите сценарий и голос:",
+                ph_avatar_script: "Введите, что должен сказать аватар...",
+                opt_male: "Мужской голос",
+                opt_female: "Женский голос",
+                btn_play_avatar: "Озвучить и просмотреть",
+                btn_export_video: "Создать видео (MP4)",
+                t1_title: "Аудитор грамматики и читаемости",
+                t1_sub: "Проверка текста в реальном времени и исправление ошибок.",
+                ph_grammar: "Введите или вставьте текст для анализа...",
+                btn_audit_now: "Проверить текст",
+                btn_fix: "Автоисправление",
+                lbl_readability: "Читаемость:",
+                lbl_errors: "Ошибки:",
+                lbl_words: "Слова:",
+                t2_title: "Оптимизатор плотности ключевых слов",
+                t2_sub: "Баланс плотности ключевых слов по стандартам Google.",
+                ph_kw: "Ключевое слово",
+                ph_article: "Вставьте статью для анализа плотности...",
+                btn_seo_audit: "Анализ плотности",
+                lbl_density: "Плотность:",
+                lbl_status: "Статус:",
+                status_waiting: "Ожидание текста",
+                status_good: "Оптимально для Google ✅",
+                status_over: "Переспам ⚠️",
+                status_low: "Требуется больше повторений ℹ️",
+                t3_title: "ИИ-рерайтер текста",
+                t3_sub: "Создание уникальных текстов без дубликатов.",
+                ph_rewrite: "Введите текст для рерайта...",
+                btn_rewrite: "Рерайтить",
+                t4_title: "Вирусные хуки для Reels",
+                t4_sub: "Цепляющие фразы для первых 3 секунд видео.",
+                btn_hook: "Создать хук",
+                t5_title: "Генератор трендовых тегов",
+                t5_sub: "Извлечение актуальных тегов для попадания в рекомендации.",
+                btn_tags: "Извлечь теги",
+                t6_title: "Симулятор выдачи Google",
+                t6_sub: "Просмотр сниппета в поисковой выдаче Google.",
+                serv_heading: "Биржа услуг для авторов",
+                serv_sub: "Связывайтесь со специалистами напрямую через WhatsApp",
+                tag_srv1: "Монтаж видео",
+                title_srv1: "Создание коротких видео",
+                desc_srv1: "Превращение длинных стримов в вирусные Reels.",
+                wa_srv1: "Написать в WhatsApp",
+                tag_srv2: "SEO продвижение",
+                title_srv2: "Оптимизация для Google",
+                desc_srv2: "Стратегия ключевых слов для выхода в топ.",
+                wa_srv2: "Написать в WhatsApp",
+                tag_srv3: "Веб-разработка",
+                title_srv3: "Облачные веб-приложения",
+                desc_srv3: "Сверхбыстрый деплой на инфраструктуре Cloudflare.",
+                wa_srv3: "Написать в WhatsApp",
+                faq_heading: "Часто задаваемые вопросы",
+                faq_q1: "Сервис полностью бесплатный?",
+                faq_a1: "Да, инструменты загрузки и SEO доступны бесплатно.",
+                faq_q2: "Какая плотность ключевых слов рекомендуется?",
+                faq_a2: "Оптимальный диапазон составляет от 1,0% до 2,0%.",
+                txt_footer: "© 2026 SnapMega. Все права защищены"
+            }
+        };
+
+        let currentLang = 'en';
+
+        function applyLanguage(lang) {
+            if (!translations[lang]) lang = 'en';
+            currentLang = lang;
+            const t = translations[lang];
+
+            document.documentElement.lang = lang;
+            document.documentElement.dir = t.dir;
+
+            document.getElementById('txt_welcome_bar').textContent = t.welcome_bar;
+            document.getElementById('nav_down').textContent = t.nav_down;
+            document.getElementById('nav_avatar').textContent = t.nav_avatar;
+            document.getElementById('nav_tools').textContent = t.nav_tools;
+            document.getElementById('nav_serv').textContent = t.nav_serv;
+            document.getElementById('nav_faq').textContent = t.nav_faq;
+
+            document.getElementById('txt_badge').textContent = t.badge;
+            document.getElementById('txt_hero_title').textContent = t.hero_title;
+            document.getElementById('txt_hero_sub').textContent = t.hero_sub;
+            document.getElementById('mediaUrl').placeholder = t.placeholder_url;
+            document.getElementById('downloadBtnText').textContent = t.btn_down;
+            document.getElementById('tab_live').textContent = t.tab_live;
+            document.getElementById('txt_clip_instruction').innerHTML = `<i class="fa-solid fa-scissors"></i> ${t.clip_instruction}`;
+            document.getElementById('lbl_from').textContent = t.lbl_from;
+            document.getElementById('lbl_to').textContent = t.lbl_to;
+            document.getElementById('lbl_ratio').textContent = t.lbl_ratio;
+            document.getElementById('btn_save').textContent = t.btn_save;
+
+            document.getElementById('txt_avatar_heading').innerHTML = `<i class="fa-solid fa-film" style="color:var(--primary-emerald)"></i> ${t.avatar_heading}`;
+            document.getElementById('txt_avatar_sub').textContent = t.avatar_sub;
+            document.getElementById('lbl_choose_avatar').textContent = t.lbl_choose_avatar;
+            document.getElementById('btn_upload_photo').textContent = t.btn_upload_photo;
+            document.getElementById('lbl_enter_script').textContent = t.lbl_enter_script;
+            document.getElementById('avatarScript').placeholder = t.ph_avatar_script;
+            document.getElementById('opt_male').textContent = t.opt_male;
+            document.getElementById('opt_female').textContent = t.opt_female;
+            document.getElementById('btn_play_avatar').textContent = t.btn_play_avatar;
+            document.getElementById('btn_export_video').textContent = t.btn_export_video;
+
+            document.getElementById('t1_title').textContent = t.t1_title;
+            document.getElementById('t1_sub').textContent = t.t1_sub;
+            document.getElementById('grammarInput').placeholder = t.ph_grammar;
+            document.getElementById('btn_audit_now').textContent = t.btn_audit_now;
+            document.getElementById('btn_fix').textContent = t.btn_fix;
+            document.getElementById('lbl_readability').textContent = t.lbl_readability;
+            document.getElementById('lbl_errors').textContent = t.lbl_errors;
+            document.getElementById('lbl_words').textContent = t.lbl_words;
+
+            document.getElementById('t2_title').textContent = t.t2_title;
+            document.getElementById('t2_sub').textContent = t.t2_sub;
+            document.getElementById('targetKeyword').placeholder = t.ph_kw;
+            document.getElementById('seoArticleContent').placeholder = t.ph_article;
+            document.getElementById('btn_seo_audit').textContent = t.btn_seo_audit;
+            document.getElementById('lbl_density').textContent = t.lbl_density;
+            document.getElementById('lbl_status').textContent = t.lbl_status;
+
+            document.getElementById('t3_title').textContent = t.t3_title;
+            document.getElementById('t3_sub').textContent = t.t3_sub;
+            document.getElementById('rewriteInput').placeholder = t.ph_rewrite;
+            document.getElementById('btn_rewrite').textContent = t.btn_rewrite;
+
+            document.getElementById('t4_title').textContent = t.t4_title;
+            document.getElementById('t4_sub').textContent = t.t4_sub;
+            document.getElementById('btn_hook').textContent = t.btn_hook;
+
+            document.getElementById('t5_title').textContent = t.t5_title;
+            document.getElementById('t5_sub').textContent = t.t5_sub;
+            document.getElementById('btn_tags').textContent = t.btn_tags;
+
+            document.getElementById('t6_title').textContent = t.t6_title;
+            document.getElementById('t6_sub').textContent = t.t6_sub;
+
+            document.getElementById('serpPreviewBox').style.textAlign = t.dir === 'rtl' ? 'right' : 'left';
+
+            document.getElementById('txt_serv_heading').innerHTML = `<i class="fa-solid fa-briefcase" style="color:var(--primary-emerald)"></i> ${t.serv_heading}`;
+            document.getElementById('txt_serv_sub').textContent = t.serv_sub;
+            document.getElementById('tag_srv1').textContent = t.tag_srv1;
+            document.getElementById('title_srv1').textContent = t.title_srv1;
+            document.getElementById('desc_srv1').textContent = t.desc_srv1;
+            document.getElementById('wa_srv1').textContent = t.wa_srv1;
+
+            document.getElementById('tag_srv2').textContent = t.tag_srv2;
+            document.getElementById('title_srv2').textContent = t.title_srv2;
+            document.getElementById('desc_srv2').textContent = t.desc_srv2;
+            document.getElementById('wa_srv2').textContent = t.wa_srv2;
+
+            document.getElementById('tag_srv3').textContent = t.tag_srv3;
+            document.getElementById('title_srv3').textContent = t.title_srv3;
+            document.getElementById('desc_srv3').textContent = t.desc_srv3;
+            document.getElementById('wa_srv3').textContent = t.wa_srv3;
+
+            document.getElementById('faq_heading').innerHTML = `<i class="fa-regular fa-circle-question" style="color:var(--primary-emerald)"></i> ${t.faq_heading}`;
+            document.getElementById('faq_q1').textContent = t.faq_q1;
+            document.getElementById('faq_a1').textContent = t.faq_a1;
+            document.getElementById('faq_q2').textContent = t.faq_q2;
+            document.getElementById('faq_a2').textContent = t.faq_a2;
+
+            document.getElementById('txt_footer').textContent = t.txt_footer;
+            document.getElementById('langSelect').value = lang;
+        }
+
+        function autoDetectUserLanguage() {
+            const userLang = (navigator.language || navigator.userLanguage || 'en').toLowerCase();
+            let matched = 'en';
+
+            if (userLang.startsWith('ar')) {
+                matched = 'ar';
+                document.getElementById('countrySelect').value = 'Africa/Algiers';
+            } else if (userLang.startsWith('fr')) {
+                matched = 'fr';
+                document.getElementById('countrySelect').value = 'Europe/Paris';
+            } else if (userLang.startsWith('es')) {
+                matched = 'es';
+                document.getElementById('countrySelect').value = 'Europe/Paris';
+            } else if (userLang.startsWith('de')) {
+                matched = 'de';
+                document.getElementById('countrySelect').value = 'Europe/Berlin';
+            } else if (userLang.startsWith('ru')) {
+                matched = 'ru';
+                document.getElementById('countrySelect').value = 'Europe/Moscow';
+            } else {
+                matched = 'en';
+                document.getElementById('countrySelect').value = 'America/New_York';
+            }
+
+            applyLanguage(matched);
+            updateLocaleDetails();
+        }
+
+        function updateLocaleDetails() {
+            const timeZone = document.getElementById('countrySelect').value;
+            const now = new Date();
+            
+            const clockFormatter = new Intl.DateTimeFormat('en-US', {
+                timeZone: timeZone,
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: true
+            });
+            document.getElementById('liveClock').textContent = clockFormatter.format(now);
+
+            const dateFormatter = new Intl.DateTimeFormat('en-CA', {
+                timeZone: timeZone,
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit'
+            });
+            document.getElementById('liveDate').textContent = dateFormatter.format(now);
+        }
+        setInterval(updateLocaleDetails, 1000);
+
+        // Replace this placeholder with the public URL of your deployed SnapMega API.
+        const SNAPMEGA_API_BASE = 'https://YOUR_BACKEND_URL';
+
+        let currentPlatform = 'tiktok';
+
+        const platformServices = {
+            tiktok: 'https://snaptik.app/',
+            instagram: 'https://snapinsta.app/',
+            facebook: 'https://fdownloader.net/',
+            youtube: 'https://y2mate.is/',
+            mp3: 'https://cobalt.tools/',
+            live: 'https://cobalt.tools/'
+        };
+
+        function platformFromUrl(rawUrl) {
+            try {
+                const host = new URL(rawUrl).hostname.toLowerCase().replace(/^www\./, '');
+                if (host === 'tiktok.com' || host.endsWith('.tiktok.com')) return 'tiktok';
+                if (host === 'instagram.com' || host.endsWith('.instagram.com')) return 'instagram';
+                if (host === 'facebook.com' || host.endsWith('.facebook.com') || host === 'fb.watch' || host.endsWith('.fb.watch')) return 'facebook';
+                if (host === 'youtube.com' || host.endsWith('.youtube.com') || host === 'youtu.be' || host.endsWith('.youtu.be') || host === 'youtube-nocookie.com' || host.endsWith('.youtube-nocookie.com')) return 'youtube';
+            } catch (_) {}
+            return null;
+        }
+
+        function setActivePlatformButton(platform) {
+            document.querySelectorAll('.tab-btn').forEach(button => {
+                const match = button.getAttribute('onclick') || '';
+                button.classList.toggle('active', match.includes("switchPlatform('" + platform + "'"));
+            });
+        }
+
+        function switchPlatform(platform) {
+            currentPlatform = platform;
+            setActivePlatformButton(platform);
+            const clipOptions = document.getElementById('clipCutterOptions');
+            if (clipOptions) clipOptions.classList.toggle('active', platform === 'live');
+            const resultCard = document.getElementById('resultCard');
+            if (resultCard) resultCard.style.display = 'none';
+        }
+
+        // Keep the visitor's chosen tab selected. Pasting a URL must NOT silently
+        // change their selection; the selected tab is checked against the URL on submit.
+        function getDownloaderUrl(platform) {
+            return platformServices[platform] || platformServices.tiktok;
+        }
+
+        function showDownloadMessage(title, details) {
+            const resultCard = document.getElementById('resultCard');
+            const videoTitle = document.getElementById('videoTitle');
+            const videoDetails = document.getElementById('videoDetails');
+            if (videoTitle) videoTitle.textContent = title;
+            if (videoDetails) videoDetails.textContent = details;
+            if (resultCard) resultCard.style.display = 'flex';
+        }
+
+        async function processDownload() {
+            const input = document.getElementById('mediaUrl');
+            const urlInput = input ? input.value.trim() : '';
+            const btn = document.getElementById('downloadBtnText');
+            const processBtn = document.getElementById('btnProcessDownload');
+            const dlBtn = document.getElementById('btnDownloadDirect');
+            const oldButtonHtml = btn ? btn.innerHTML : '';
+            const labels = {tiktok:'TikTok', instagram:'Instagram', facebook:'Facebook', youtube:'YouTube', mp3:'MP3 Audio', live:'Live Clipper'};
+
+            if (!urlInput) {
+                if (input) input.focus();
+                showDownloadMessage(currentLang === 'ar' ? 'ألصق رابط الفيديو أولاً' : 'Paste a video link first', currentLang === 'ar' ? 'اختار المنصة، ثم ألصق رابط الفيديو في الخانة.' : 'Choose a platform, then paste the video link.');
+                return;
+            }
+
+            let parsedUrl;
+            try {
+                parsedUrl = new URL(urlInput);
+                if (!['http:', 'https:'].includes(parsedUrl.protocol)) throw new Error('Invalid protocol');
+            } catch (_) {
+                showDownloadMessage(currentLang === 'ar' ? 'الرابط غير صحيح' : 'Invalid link', currentLang === 'ar' ? 'ألصق رابط فيديو كامل يبدأ بـ https://' : 'Paste a complete video URL beginning with https://');
+                return;
+            }
+
+            const detected = platformFromUrl(urlInput);
+            if (!detected) {
+                showDownloadMessage(currentLang === 'ar' ? 'المنصة غير مدعومة' : 'Unsupported link', currentLang === 'ar' ? 'استعمل رابط TikTok أو Instagram أو Facebook أو YouTube.' : 'Use a TikTok, Instagram, Facebook, or YouTube link.');
+                return;
+            }
+            if (currentPlatform !== 'mp3' && currentPlatform !== 'live' && detected !== currentPlatform) {
+                showDownloadMessage(currentLang === 'ar' ? 'الرابط ما يطابقش المنصة المختارة' : 'Platform does not match the link', currentLang === 'ar' ? 'راك مختار ' + labels[currentPlatform] + '، لكن الرابط تاع ' + labels[detected] + '. اختار المنصة الصحيحة أو بدّل الرابط.' : 'You selected ' + labels[currentPlatform] + ', but this is a ' + labels[detected] + ' link. Select the matching platform or change the link.');
+                return;
+            }
+
+            const requestPlatform = currentPlatform === 'mp3' || currentPlatform === 'live' ? detected : currentPlatform;
+            if (btn) btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> ' + (currentLang === 'ar' ? 'جاري تجهيز التحميل...' : 'Preparing download...');
+            if (processBtn) processBtn.disabled = true;
+            const resultCard = document.getElementById('resultCard');
+            if (resultCard) resultCard.style.display = 'none';
+            if (dlBtn) {
+                dlBtn.removeAttribute('href');
+                dlBtn.style.display = 'none';
+            }
+
+            try {
+                if (SNAPMEGA_API_BASE.includes('YOUR_BACKEND_URL')) {
+                    throw new Error('API_NOT_CONFIGURED');
+                }
+                const response = await fetch(SNAPMEGA_API_BASE.replace(/\/$/, '') + '/api/download', {
+                    method: 'POST',
+                    headers: {'Accept': 'application/octet-stream', 'Content-Type': 'application/json'},
+                    body: JSON.stringify({url: urlInput, mode: currentPlatform === 'mp3' ? 'audio' : (currentPlatform === 'live' ? 'clip' : 'video'), clip_start: (document.getElementById('clipStart') || {}).value || '00:10', clip_end: (document.getElementById('clipEnd') || {}).value || '01:00'})
+                });
+                if (!response.ok) {
+                    let message = 'Download failed';
+                    try {
+                        const errorData = await response.json();
+                        if (errorData && errorData.detail) message = errorData.detail;
+                    } catch (_) {}
+                    throw new Error(message);
+                }
+                const blob = await response.blob();
+                if (!blob || blob.size === 0) throw new Error('The server returned an empty file');
+
+                const disposition = response.headers.get('Content-Disposition') || '';
+                const nameMatch = disposition.match(/filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i);
+                let filename = 'snapmega_download' + (currentPlatform === 'mp3' ? '.mp3' : '.mp4');
+                if (nameMatch) {
+                    try { filename = decodeURIComponent(nameMatch[1] || nameMatch[2]); }
+                    catch (_) { filename = nameMatch[2] || filename; }
+                }
+                const objectUrl = URL.createObjectURL(blob);
+                const tempLink = document.createElement('a');
+                tempLink.href = objectUrl;
+                tempLink.download = filename;
+                document.body.appendChild(tempLink);
+                tempLink.click();
+                tempLink.remove();
+                setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+
+                if (dlBtn) dlBtn.style.display = 'none';
+                showDownloadMessage(
+                    currentLang === 'ar' ? 'بدأ تحميل الملف' : 'Download started',
+                    currentLang === 'ar' ? 'إذا ما بداش التحميل، تأكد من إعدادات التنزيل في المتصفح وعاود المحاولة.' : 'If the download did not start, check your browser download settings and try again.'
+                );
+            } catch (error) {
+                console.warn('SnapMega API failed:', error);
+                const apiNotConfigured = error && error.message === 'API_NOT_CONFIGURED';
+                showDownloadMessage(
+                    currentLang === 'ar' ? 'التحميل ما تمّش' : 'Download failed',
+                    apiNotConfigured
+                        ? (currentLang === 'ar' ? 'لازم تنشر خادم SnapMega وتكتب رابط API في SNAPMEGA_API_BASE داخل index.html، ثم تعاود نشر الموقع.' : 'Deploy the SnapMega API, set SNAPMEGA_API_BASE in index.html, and redeploy the site.')
+                        : (currentLang === 'ar' ? (error.message || 'الخادم ما قدرش يجيب هذا الفيديو. جرّب رابطًا عامًا آخر.') : (error.message || 'The server could not fetch this media. Try another public link.'))
+                );
+            } finally {
+                if (btn) btn.innerHTML = oldButtonHtml || (translations[currentLang] ? translations[currentLang].btn_down : 'Download Now');
+                if (processBtn) processBtn.disabled = false;
+            }
+        }
+    </script>
+</body>
+</html>
