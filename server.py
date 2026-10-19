@@ -69,15 +69,23 @@ def get_tiktok_direct(raw_url: str, mode: str, temp_dir: str):
         raise Exception("TikWM API returned error")
 
     vdata = res["data"]
-    target_url = vdata.get("music") if mode == "audio" else (vdata.get("play") or vdata.get("hdplay"))
-    if not target_url:
-        raise Exception("No download URL found")
+    
+    if mode == "audio":
+        target_url = vdata.get("music")
+        ext = ".mp3"
+    else:
+        # ضمان اختيار رابط الفيديو (play أو hdplay أو wmplay) وليس رابط الصوت (music)
+        target_url = vdata.get("play") or vdata.get("hdplay") or vdata.get("wmplay")
+        ext = ".mp4"
 
-    ext = ".mp3" if mode == "audio" else ".mp4"
+    if not target_url:
+        raise Exception("No video download URL found")
+
     out_file = os.path.join(temp_dir, f"tiktok_{vdata.get('id', 'video')}{ext}")
     
     file_req = urllib.request.Request(target_url, headers={
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Referer": "https://www.tiktok.com/"
     })
     with urllib.request.urlopen(file_req, timeout=60) as dl, open(out_file, "wb") as f_out:
         f_out.write(dl.read())
@@ -100,14 +108,12 @@ def download_media(request: DownloadRequest):
     try:
         target_file = None
 
-        # استخدام محرك TikTok المباشر
         if "tiktok.com" in raw_url:
             try:
                 target_file = get_tiktok_direct(raw_url, mode, temp_dir)
             except Exception as e:
                 print("TikTok direct failed, fallback to yt-dlp:", e)
 
-        # المحرك الاحتياطي لبقية المنصات
         if not target_file or not os.path.isfile(target_file):
             out_template = os.path.join(temp_dir, "%(id)s.%(ext)s")
             cmd = [
@@ -135,7 +141,7 @@ def download_media(request: DownloadRequest):
                 target_file = files[0]
 
         if not target_file or not os.path.isfile(target_file):
-            raise HTTPException(status_code=400, detail="تعذر استخراج الفيديو، تأكد من أن الرابط عام وليس حساباً خاصاً")
+            raise HTTPException(status_code=400, detail="تعذر استخراج الفيديو، تأكد من أن الرابط عام")
 
         if os.path.getsize(target_file) < 5 * 1024:
             raise HTTPException(status_code=400, detail="الملف المستخرج تالف أو محمي من المصدر")
@@ -148,7 +154,7 @@ def download_media(request: DownloadRequest):
         )
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail="حدث خطأ غير متوقع أثناء معالجة الطلب")
+    except Exception:
+        raise HTTPException(status_code=500, detail="حدث خطأ أثناء معالجة الطلب")
     finally:
         semaphore.release()
