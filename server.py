@@ -237,8 +237,34 @@ def download_with_ytdlp(raw_url: str, mode: str, request: DownloadRequest, temp_
         print("yt-dlp exit code:", result.returncode)
         print("yt-dlp stderr:", err)
         low = err.lower()
-        if any(word in low for word in ("login", "log in", "cookies", "checkpoint")):
-            raise HTTPException(status_code=400, detail="الفيديو يتطلب تسجيل الدخول أو غير متاح للعامة.")
+       if any(word in low for word in (
+    "login required",
+    "sign in to confirm",
+    "cookies are needed",
+    "checkpoint",
+    "private video",
+)):
+    raise HTTPException(
+        status_code=400,
+        detail="الفيديو خاص أو المنصة تطلب تسجيل الدخول. جرّب رابط فيديو عام."
+    )
+
+if any(word in low for word in (
+    "403 forbidden",
+    "http error 403",
+    "429 too many requests",
+)):
+    raise HTTPException(
+        status_code=400,
+        detail="المنصة رفضت الطلب أو حدّت من عدد المحاولات. حاول لاحقاً."
+    )
+
+print("yt-dlp full error:", err)
+
+raise HTTPException(
+    status_code=400,
+    detail="فشل التحميل. راجع Logs في Render لمعرفة الخطأ الحقيقي."
+)
         if "unsupported url" in low:
             raise HTTPException(status_code=400, detail="الرابط غير مدعوم أو رابط مشاركة؛ جرّب رابط الفيديو الأصلي.")
         raise HTTPException(status_code=400, detail="فشل استخراج الفيديو؛ راجع Logs في Render لمعرفة السبب.")
