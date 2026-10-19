@@ -1,4 +1,3 @@
-
 import os
 import re
 import json
@@ -22,19 +21,14 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=False,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["POST", "GET", "OPTIONS"],
     allow_headers=["*"],
     expose_headers=["Content-Disposition"],
 )
 
 ALLOWED_HOSTS = (
-    "tiktok.com",
-    "instagram.com",
-    "facebook.com",
-    "fb.watch",
-    "youtube.com",
-    "youtu.be",
-    "youtube-nocookie.com",
+    "tiktok.com", "instagram.com", "facebook.com", "fb.watch",
+    "youtube.com", "youtu.be", "youtube-nocookie.com",
 )
 
 USER_AGENT = (
@@ -48,7 +42,7 @@ semaphore = threading.BoundedSemaphore(2)
 
 class DownloadRequest(BaseModel):
     url: HttpUrl
-    mode: str = "video"
+    mode: str = "video"  # video | audio | clip
     clip_start: str = "00:10"
     clip_end: str = "01:00"
 
@@ -60,59 +54,38 @@ def host_matches(host: str, domain: str) -> bool:
 def validate_url(raw_url: str) -> str:
     parsed = urlparse(raw_url)
     host = (parsed.hostname or "").lower().rstrip(".")
-
     if parsed.scheme not in ("http", "https") or not host:
         raise HTTPException(status_code=400, detail="رابط غير صالح")
-
     if not any(host_matches(host, domain) for domain in ALLOWED_HOSTS):
         raise HTTPException(status_code=400, detail="هذه المنصة غير مدعومة")
-
     if parsed.username or parsed.password:
         raise HTTPException(status_code=400, detail="الرابط غير صالح")
-
     return raw_url
 
 
 def safe_filename(name: str, mode: str) -> str:
     name = Path(name).name
-    name = re.sub(
-        r"[^\w .()\-\[\]]+",
-        "_",
-        name,
-        flags=re.UNICODE,
-    ).strip(" .")
-
+    name = re.sub(r"[^\w .()\-\[\]]+", "_", name, flags=re.UNICODE).strip(" .")
     if not name:
         name = "snapmega_download"
-
     suffix = ".mp3" if mode == "audio" else ".mp4"
     stem = Path(name).stem if Path(name).suffix else name
-
     return stem[:80] + suffix
 
 
 def parse_time_to_seconds(value: str) -> int:
     parts = str(value).strip().split(":")
-
-    if not 1 <= len(parts) <= 3:
+    if not 1 <= len(parts) <= 3 or any(not part.isdigit() for part in parts):
         raise ValueError("صيغة الوقت غير صحيحة")
-
-    if any(not part.isdigit() for part in parts):
-        raise ValueError("صيغة الوقت غير صحيحة")
-
     nums = [int(part) for part in parts]
-
     if len(nums) == 1:
         return nums[0]
-
     if len(nums) == 2:
         if nums[1] >= 60:
             raise ValueError("الثواني غير صحيحة")
         return nums[0] * 60 + nums[1]
-
     if nums[1] >= 60 or nums[2] >= 60:
         raise ValueError("صيغة الوقت غير صحيحة")
-
     return nums[0] * 3600 + nums[1] * 60 + nums[2]
 
 
@@ -129,239 +102,110 @@ def run_command(cmd: list, timeout: int = 300):
 def convert_to_mp3(source: str, temp_dir: str) -> str:
     if not shutil.which("ffmpeg"):
         raise RuntimeError("ffmpeg is not installed")
-
     output = os.path.join(temp_dir, "snapmega_audio.mp3")
-
-    result = run_command(
-        [
-            "ffmpeg", "-y",
-            "-i", source,
-            "-vn",
-            "-codec:a", "libmp3lame",
-            "-q:a", "0",
-            output,
-        ],
-        timeout=240,
+    result = subprocess.run(
+        ["ffmpeg", "-y", "-i", source, "-vn", "-codec:a", "libmp3lame", "-q:a", "0", output],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=240,
     )
-
-    if (
-        result.returncode != 0
-        or not os.path.isfile(output)
-        or os.path.getsize(output) < 1024
-    ):
-        print("FFmpeg MP3 error:", (result.stderr or "")[-3000:])
+    if result.returncode != 0 or not os.path.isfile(output) or os.path.getsize(output) < 1024:
         raise RuntimeError("MP3 conversion failed")
-
     return output
 
 
+# مسار TikTok المباشر المستقر
 def get_tiktok_direct(raw_url: str, mode: str, temp_dir: str) -> str:
-    data = urllib.parse.urlencode(
-        {"url": raw_url, "hd": 1}
-    ).encode("utf-8")
-
+    data = urllib.parse.urlencode({"url": raw_url, "hd": 1}).encode("utf-8")
     req = urllib.request.Request(
-        "https://www.tikwm.com/api/",
-        data=data,
+        "https://www.tikwm.com/api/", data=data,
         headers={"User-Agent": USER_AGENT},
     )
-
     with urllib.request.urlopen(req, timeout=25) as response:
         payload = json.loads(response.read().decode("utf-8"))
-
     if payload.get("code") != 0 or not isinstance(payload.get("data"), dict):
         raise RuntimeError("TikWM API returned an error")
-
     data_obj = payload["data"]
-
-    if mode == "audio":
-        media_url = data_obj.get("music")
-    else:
-        media_url = (
-            data_obj.get("hdplay")
-            or data_obj.get("play")
-            or data_obj.get("wmplay")
-        )
-
+    media_url = data_obj.get("music") if mode == "audio" else (
+        data_obj.get("play") or data_obj.get("hdplay") or data_obj.get("wmplay")
+    )
     if not media_url:
         raise RuntimeError("TikTok media URL missing")
-
     ext = ".source" if mode == "audio" else ".mp4"
-    video_id = re.sub(
-        r"[^A-Za-z0-9_-]",
-        "_",
-        str(data_obj.get("id", "video")),
-    )
-
-    output_path = os.path.join(
-        temp_dir,
-        f"tiktok_{video_id}{ext}",
-    )
-
+    video_id = re.sub(r"[^A-Za-z0-9_-]", "_", str(data_obj.get("id", "video")))
+    output_path = os.path.join(temp_dir, f"tiktok_{video_id}{ext}")
     req = urllib.request.Request(
         media_url,
-        headers={
-            "User-Agent": USER_AGENT,
-            "Referer": "https://www.tiktok.com/",
-        },
+        headers={"User-Agent": USER_AGENT, "Referer": "https://www.tiktok.com/"},
     )
-
-    with urllib.request.urlopen(req, timeout=90) as response:
-        with open(output_path, "wb") as output:
-            shutil.copyfileobj(response, output)
-
-    if (
-        not os.path.isfile(output_path)
-        or os.path.getsize(output_path) < 5 * 1024
-    ):
+    with urllib.request.urlopen(req, timeout=90) as response, open(output_path, "wb") as output:
+        shutil.copyfileobj(response, output)
+    if not os.path.isfile(output_path) or os.path.getsize(output_path) < 5 * 1024:
         raise RuntimeError("TikTok download is empty or too small")
-
-    if mode == "audio":
-        return convert_to_mp3(output_path, temp_dir)
-
-    return output_path
+    return convert_to_mp3(output_path, temp_dir) if mode == "audio" else output_path
 
 
+# فك روابط مشاركة فيسبوك
 def resolve_facebook_share_url(raw_url: str) -> str:
     parsed = urlparse(raw_url)
     host = (parsed.hostname or "").lower()
-
-    if not (
-        host_matches(host, "facebook.com")
-        or host == "fb.watch"
-    ):
+    if not (host_matches(host, "facebook.com") or host == "fb.watch"):
         return raw_url
-
     try:
-        req = urllib.request.Request(
-            raw_url,
-            headers={"User-Agent": USER_AGENT},
-        )
-
-        opener = urllib.request.build_opener(
-            urllib.request.HTTPRedirectHandler()
-        )
-
+        req = urllib.request.Request(raw_url, headers={"User-Agent": USER_AGENT})
+        opener = urllib.request.build_opener(urllib.request.HTTPRedirectHandler())
         with opener.open(req, timeout=15) as response:
             final_url = response.geturl()
-
         final = urlparse(final_url)
         final_host = (final.hostname or "").lower()
-
-        if (
-            host_matches(final_host, "facebook.com")
-            or final_host == "fb.watch"
+        if (host_matches(final_host, "facebook.com") or host == "fb.watch") and not any(
+            marker in final.path.lower() for marker in ("/login", "/checkpoint", "/recover")
         ):
-            if not any(
-                marker in final.path.lower()
-                for marker in ("/login", "/checkpoint", "/recover")
-            ):
-                return final_url
-
+            return final_url
     except Exception as exc:
-        print("Facebook URL resolution:", repr(exc))
-
+        print("Facebook share link resolution note:", repr(exc))
     return raw_url
 
 
 def probe_media(path: str) -> dict:
     if not shutil.which("ffprobe"):
         raise RuntimeError("ffprobe is not installed")
-
-    result = run_command(
-        [
-            "ffprobe",
-            "-v", "error",
-            "-show_entries",
-            "stream=codec_type,codec_name:format=duration",
-            "-of", "json",
-            path,
-        ],
-        timeout=30,
+    result = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "stream=codec_type,codec_name:format=duration", "-of", "json", path],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=30,
     )
-
     if result.returncode != 0:
-        raise RuntimeError(
-            "Could not inspect media: "
-            + (result.stderr or "")[-1000:]
-        )
-
+        raise RuntimeError("Could not inspect media")
     data = json.loads(result.stdout or "{}")
-
-    types = {
-        stream.get("codec_type")
-        for stream in data.get("streams", [])
-    }
-
+    types = {stream.get("codec_type") for stream in data.get("streams", [])}
     try:
-        duration = float(
-            data.get("format", {}).get("duration", 0) or 0
-        )
+        duration = float(data.get("format", {}).get("duration", 0) or 0)
     except (TypeError, ValueError):
         duration = 0.0
-
-    return {
-        "has_video": "video" in types,
-        "has_audio": "audio" in types,
-        "duration": duration,
-    }
+    return {"has_video": "video" in types, "has_audio": "audio" in types, "duration": duration}
 
 
 def validate_video(path: str) -> dict:
-    if (
-        not os.path.isfile(path)
-        or os.path.getsize(path) < 5 * 1024
-    ):
+    if not os.path.isfile(path) or os.path.getsize(path) < 5 * 1024:
         raise RuntimeError("Media file missing or too small")
-
     info = probe_media(path)
-
     if not info["has_video"] or info["duration"] <= 0.2:
         raise RuntimeError("Output is not a valid video")
-
     return info
 
 
 def make_compatible_mp4(source: str, temp_dir: str) -> str:
     if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
         raise RuntimeError("FFmpeg/ffprobe is not installed")
-
     info = validate_video(source)
     output = os.path.join(temp_dir, "snapmega_final.mp4")
-
-    cmd = [
-        "ffmpeg", "-y",
-        "-i", source,
-        "-map", "0:v:0",
-    ]
-
-    if info["has_audio"]:
-        cmd += ["-map", "0:a:0"]
-    else:
-        cmd += ["-an"]
-
-    cmd += [
-        "-c:v", "libx264",
-        "-preset", "veryfast",
-        "-crf", "23",
-        "-pix_fmt", "yuv420p",
-    ]
-
+    cmd = ["ffmpeg", "-y", "-i", source, "-map", "0:v:0"]
+    cmd += ["-map", "0:a:0"] if info["has_audio"] else ["-an"]
+    cmd += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p"]
     if info["has_audio"]:
         cmd += ["-c:a", "aac", "-b:a", "128k"]
-
-    cmd += [
-        "-movflags", "+faststart",
-        "-sn", "-dn",
-        output,
-    ]
-
-    result = run_command(cmd, timeout=300)
-
+    cmd += ["-movflags", "+faststart", "-sn", "-dn", output]
+    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=300)
     if result.returncode != 0 or not os.path.isfile(output):
-        print("FFmpeg MP4 error:", (result.stderr or "")[-4000:])
         raise RuntimeError("MP4 conversion failed")
-
     validate_video(output)
     return output
 
@@ -378,6 +222,10 @@ def download_with_ytdlp(
             detail="yt-dlp غير مثبت على السيرفر",
         )
 
+    target_url = resolve_facebook_share_url(raw_url)
+    target_url = validate_url(target_url)
+    host = (urlparse(target_url).hostname or "").lower()
+
     output_template = os.path.join(
         temp_dir,
         "media_%(id)s.%(ext)s",
@@ -391,35 +239,48 @@ def download_with_ytdlp(
         "--no-progress",
         "--force-overwrites",
         "--socket-timeout", "30",
-        "--retries", "2",
-        "--fragment-retries", "2",
+        "--retries", "3",
+        "--fragment-retries", "3",
+        "--extractor-retries", "3",
         "--user-agent", USER_AGENT,
-        "--add-header", "Accept-Language:en-US,en;q=0.9",
+        "--add-header", "Accept-Language:en-US,en;q=0.9,ar;q=0.8",
         "-o", output_template,
     ]
 
-    host = (urlparse(raw_url).hostname or "").lower()
-
-    if (
+    # ضبط ترويسات Facebook و Instagram و YouTube
+    if host_matches(host, "facebook.com") or host == "fb.watch":
+        cmd += [
+            "--add-header", "Sec-Fetch-Site:same-origin",
+            "--add-header", "Sec-Fetch-Mode:navigate",
+            "--add-header", "Sec-Fetch-Dest:document",
+        ]
+    elif host_matches(host, "instagram.com"):
+        cmd += [
+            "--add-header", "Sec-Fetch-Site:cross-site",
+            "--add-header", "Sec-Fetch-Mode:navigate",
+            "--add-header", "Accept:text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        ]
+    elif (
         host_matches(host, "youtube.com")
-        or host == "youtu.be"
         or host_matches(host, "youtube-nocookie.com")
+        or host == "youtu.be"
     ):
         cmd += [
             "--extractor-args",
-            "youtube:player_client=default",
+            "youtube:player_client=android,web",
         ]
 
+    # وضع الصوت MP3
     if mode == "audio":
         cmd += [
-            "-f", "bestaudio/best",
+            "-f", "ba/b/bestaudio/best",
             "-x",
             "--audio-format", "mp3",
             "--audio-quality", "0",
         ]
     else:
         cmd += [
-            "-f", "bv*+ba/b",
+            "-f", "b/bv*+ba/bestvideo*+bestaudio/best",
             "--merge-output-format", "mp4",
         ]
 
@@ -445,41 +306,39 @@ def download_with_ytdlp(
                 "--force-keyframes-at-cuts",
             ]
 
-    cmd.append(raw_url)
+    cmd.append(target_url)
 
     try:
         result = run_command(cmd, timeout=300)
     except subprocess.TimeoutExpired as exc:
-        print("yt-dlp timeout for host:", host)
         raise HTTPException(
             status_code=504,
-            detail="انتهت مهلة التنزيل؛ حاول مجدداً",
+            detail="انتهت مهلة التحميل، حاول مرة أخرى",
         ) from exc
 
     if result.returncode != 0:
-        err = (
-            result.stderr or result.stdout or "No error output"
-        )[-5000:]
-
+        err = (result.stderr or result.stdout or "Unknown error")[-5000:]
         low = err.lower()
-
-        print("yt-dlp failed for host:", host)
-        print("yt-dlp exit code:", result.returncode)
-        print("yt-dlp stderr:", err)
+        print("yt-dlp error:", err)
 
         if any(word in low for word in (
             "login required",
             "sign in to confirm",
             "cookies are needed",
-            "checkpoint",
             "private video",
+            "checkpoint",
+            "please log in",
+            "authentication required",
         )):
             raise HTTPException(
                 status_code=400,
-                detail=(
-                    "الفيديو خاص أو المنصة تطلب تسجيل الدخول. "
-                    "جرّب رابط فيديو عام."
-                ),
+                detail="المنصة تطلب تسجيل الدخول أو أن الفيديو غير عام. جرّب رابط فيديو عام.",
+            )
+
+        if "unsupported url" in low:
+            raise HTTPException(
+                status_code=400,
+                detail="صيغة الرابط غير مدعومة. انسخ رابط الفيديو الأصلي وجرب مجدداً.",
             )
 
         if any(word in low for word in (
@@ -489,23 +348,12 @@ def download_with_ytdlp(
         )):
             raise HTTPException(
                 status_code=400,
-                detail=(
-                    "المنصة رفضت الطلب أو حدّت من عدد المحاولات. "
-                    "حاول لاحقاً."
-                ),
+                detail="المنصة رفضت الطلب مؤقتاً؛ حاول لاحقاً.",
             )
-
-        if "unsupported url" in low:
-            raise HTTPException(
-                status_code=400,
-                detail="الرابط غير مدعوم؛ جرّب رابط الفيديو الأصلي.",
-            )
-
-        print("yt-dlp full error:", err)
 
         raise HTTPException(
             status_code=400,
-            detail="فشل التحميل. راجع Logs في Render لمعرفة السبب.",
+            detail="تعذر التحميل. راجع Logs في Render لمعرفة السبب.",
         )
 
     extensions = {
@@ -514,24 +362,18 @@ def download_with_ytdlp(
     }
 
     candidates = []
-
     for name in os.listdir(temp_dir):
         path = os.path.join(temp_dir, name)
-
-        if not os.path.isfile(path):
+        if not os.path.isfile(path) or name.endswith((".part", ".ytdl", ".temp")):
             continue
-
-        if name.endswith((".part", ".ytdl", ".temp")):
-            continue
-
-        if (
-            Path(name).suffix.lower() in extensions
-            and os.path.getsize(path) >= 5 * 1024
-        ):
+        if Path(name).suffix.lower() in extensions and os.path.getsize(path) >= 5 * 1024:
             candidates.append(path)
 
     if not candidates:
-        raise RuntimeError("yt-dlp produced no usable output file")
+        raise HTTPException(
+            status_code=400,
+            detail="لم يتم العثور على ملف صالح بعد التحميل.",
+        )
 
     candidates.sort(
         key=lambda path: (
@@ -542,7 +384,6 @@ def download_with_ytdlp(
     )
 
     selected = candidates[0]
-
     if mode == "audio":
         if Path(selected).suffix.lower() != ".mp3":
             selected = convert_to_mp3(selected, temp_dir)
@@ -554,13 +395,7 @@ def download_with_ytdlp(
 
 @app.get("/")
 def root():
-    return {
-        "ok": True,
-        "service": "snapmega-api",
-        "version": "1.3.0",
-        "health": "/health",
-        "download": "/api/download",
-    }
+    return {"ok": True, "service": "snapmega-api", "health": "/health", "download": "/api/download"}
 
 
 @app.get("/health")
@@ -579,95 +414,52 @@ def health():
 def download_media(request: DownloadRequest):
     raw_url = validate_url(str(request.url))
     mode = (request.mode or "video").lower().strip()
-
     if mode not in ("video", "audio", "clip"):
-        raise HTTPException(
-            status_code=400,
-            detail="نوع التحميل غير مدعوم",
-        )
+        raise HTTPException(status_code=400, detail="نوع التحميل غير مدعوم")
 
     if not semaphore.acquire(blocking=False):
-        raise HTTPException(
-            status_code=429,
-            detail="السيرفر مشغول حالياً، حاول بعد لحظات",
-        )
+        raise HTTPException(status_code=429, detail="السيرفر مشغول حالياً؛ أعد المحاولة بعد قليل")
 
     temp_dir = tempfile.mkdtemp(prefix="snapmega_")
-
     try:
         if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
-            raise HTTPException(
-                status_code=500,
-                detail="FFmpeg/ffprobe غير مثبتين على السيرفر",
-            )
+            raise HTTPException(status_code=500, detail="FFmpeg/ffprobe غير مثبتين على السيرفر")
 
         host = (urlparse(raw_url).hostname or "").lower()
         is_tiktok = host_matches(host, "tiktok.com")
-
         target = None
         used_tiktok_direct = False
 
-        # Use the direct TikTok route for video/audio.
-        # Clips go through yt-dlp so the requested section is cut.
-        if is_tiktok and mode in ("video", "audio"):
+        if is_tiktok:
             try:
                 target = get_tiktok_direct(raw_url, mode, temp_dir)
                 used_tiktok_direct = True
             except Exception as exc:
-                print(
-                    "TikTok direct failed; falling back to yt-dlp:",
-                    repr(exc),
-                )
+                print("TikTok direct fallback:", repr(exc))
 
         if not target or not os.path.isfile(target):
-            resolved_url = resolve_facebook_share_url(raw_url)
-            target = download_with_ytdlp(
-                resolved_url,
-                mode,
-                request,
-                temp_dir,
-            )
+            target = download_with_ytdlp(raw_url, mode, request, temp_dir)
             used_tiktok_direct = False
 
-        if (
-            not os.path.isfile(target)
-            or os.path.getsize(target) < 5 * 1024
-        ):
-            raise RuntimeError("Output file missing or invalid")
+        if not os.path.isfile(target) or os.path.getsize(target) < 5 * 1024:
+            raise RuntimeError("الملف المستخرج غير صالح")
 
         if mode == "audio":
             if Path(target).suffix.lower() != ".mp3":
                 target = convert_to_mp3(target, temp_dir)
-
             media_type = "audio/mpeg"
-
         else:
             if not (is_tiktok and used_tiktok_direct):
                 target = make_compatible_mp4(target, temp_dir)
-
             media_type = "video/mp4"
 
         filename = safe_filename(os.path.basename(target), mode)
-
-        # Do not remove temp_dir before FileResponse finishes streaming.
-        return FileResponse(
-            path=target,
-            filename=filename,
-            media_type=media_type,
-        )
+        return FileResponse(path=target, filename=filename, media_type=media_type)
 
     except HTTPException:
         raise
-
     except Exception as exc:
-        print("Download endpoint error:", repr(exc))
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "تعذر تنزيل الوسيط. "
-                "راجع Logs في Render لمعرفة السبب."
-            ),
-        ) from exc
-
+        print("Download error:", repr(exc))
+        raise HTTPException(status_code=400, detail="تعذر تنزيل الوسيط. راجع Logs في Render لمعرفة السبب.") from exc
     finally:
         semaphore.release()
