@@ -13,9 +13,9 @@ from urllib.parse import urlparse
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel
 
-app = FastAPI(title="SnapMega Download API", version="1.3.0")
+app = FastAPI(title="SnapMega Download API", version="2.2.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -41,10 +41,31 @@ semaphore = threading.BoundedSemaphore(2)
 
 
 class DownloadRequest(BaseModel):
-    url: HttpUrl
+    url: str
     mode: str = "video"  # video | audio | clip
     clip_start: str = "00:10"
     clip_end: str = "01:00"
+
+
+def normalize_input_url(value: str) -> str:
+    """تنظيف وتنسيق الروابط المنسوخة من تطبيقات الهاتف."""
+    raw = str(value or "").strip()
+
+    markdown_match = re.search(r"\((https?://[^)\s]+)\)", raw, flags=re.I)
+    if markdown_match:
+        raw = markdown_match.group(1)
+    raw = raw.strip().strip("\"'<> ")
+    raw = raw.replace("\\", "/")
+    raw = re.sub(r"^(https?):/+", r"\1://", raw, flags=re.I)
+    if raw.lower().startswith("www."):
+        raw = "https://" + raw
+    elif raw.lower().startswith((
+        "facebook.com/", "m.facebook.com/", "fb.watch/",
+        "tiktok.com/", "www.tiktok.com/", "instagram.com/",
+        "www.instagram.com/", "youtube.com/", "www.youtube.com/", "youtu.be/"
+    )):
+        raw = "https://" + raw
+    return raw
 
 
 def host_matches(host: str, domain: str) -> bool:
@@ -112,7 +133,7 @@ def convert_to_mp3(source: str, temp_dir: str) -> str:
     return output
 
 
-# مسار TikTok المباشر المستقر
+# مسار TikTok المباشر والناجح
 def get_tiktok_direct(raw_url: str, mode: str, temp_dir: str) -> str:
     data = urllib.parse.urlencode({"url": raw_url, "hd": 1}).encode("utf-8")
     req = urllib.request.Request(
@@ -145,23 +166,40 @@ def get_tiktok_direct(raw_url: str, mode: str, temp_dir: str) -> str:
 
 # فك روابط مشاركة فيسبوك
 def resolve_facebook_share_url(raw_url: str) -> str:
+    raw_url = normalize_input_url(raw_url)
     parsed = urlparse(raw_url)
     host = (parsed.hostname or "").lower()
     if not (host_matches(host, "facebook.com") or host == "fb.watch"):
         return raw_url
-    try:
-        req = urllib.request.Request(raw_url, headers={"User-Agent": USER_AGENT})
-        opener = urllib.request.build_opener(urllib.request.HTTPRedirectHandler())
-        with opener.open(req, timeout=15) as response:
-            final_url = response.geturl()
-        final = urlparse(final_url)
-        final_host = (final.hostname or "").lower()
-        if (host_matches(final_host, "facebook.com") or host == "fb.watch") and not any(
-            marker in final.path.lower() for marker in ("/login", "/checkpoint", "/recover")
-        ):
-            return final_url
-    except Exception as exc:
-        print("Facebook share link resolution note:", repr(exc))
+
+    candidates = [raw_url]
+    if host_matches(host, "facebook.com"):
+        for mobile_host in ("m.facebook.com", "touch.facebook.com", "www.facebook.com"):
+            candidate = parsed._replace(netloc=mobile_host).geturl()
+            if candidate not in candidates:
+                candidates.append(candidate)
+
+    for candidate in candidates:
+        try:
+            req = urllib.request.Request(
+                candidate,
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
+                    "Accept-Language": "en-US,en;q=0.9,ar;q=0.8",
+                    "Referer": "https://www.facebook.com/",
+                },
+            )
+            opener = urllib.request.build_opener(urllib.request.HTTPRedirectHandler())
+            with opener.open(req, timeout=15) as response:
+                final_url = response.geturl()
+            final = urlparse(final_url)
+            final_host = (final.hostname or "").lower()
+            if (host_matches(final_host, "facebook.com") or final_host == "fb.watch") and not any(
+                marker in final.path.lower() for marker in ("/login", "/checkpoint", "/recover")
+            ):
+                return final_url
+        except Exception as exc:
+            print("Facebook share link resolution note:", repr(exc))
     return raw_url
 
 
@@ -247,7 +285,7 @@ def download_with_ytdlp(
         "-o", output_template,
     ]
 
-    # ضبط ترويسات Facebook و Instagram و YouTube
+    # إعدادات الترويسات والعملاء للمنصات
     if host_matches(host, "facebook.com") or host == "fb.watch":
         cmd += [
             "--add-header", "Sec-Fetch-Site:same-origin",
@@ -265,9 +303,10 @@ def download_with_ytdlp(
         or host_matches(host, "youtube-nocookie.com")
         or host == "youtu.be"
     ):
+        # تصحيح عملاء يوتيوب لمنع خطأ البوت والكابتشا على سيرفرات السحاب
         cmd += [
             "--extractor-args",
-            "youtube:player_client=android,web",
+            "youtube:player_client=android,web,ios",
         ]
 
     # وضع الصوت MP3
@@ -279,6 +318,7 @@ def download_with_ytdlp(
             "--audio-quality", "0",
         ]
     else:
+        # صيغة مرنة تقبل الفيديو المدمج أو المنفصل
         cmd += [
             "-f", "b/bv*+ba/bestvideo*+bestaudio/best",
             "--merge-output-format", "mp4",
@@ -403,7 +443,7 @@ def health():
     return {
         "ok": True,
         "service": "snapmega-api",
-        "version": "1.3.0",
+        "version": "2.2.0",
         "yt_dlp": shutil.which("yt-dlp") is not None,
         "ffmpeg": shutil.which("ffmpeg") is not None,
         "ffprobe": shutil.which("ffprobe") is not None,
@@ -412,7 +452,7 @@ def health():
 
 @app.post("/api/download")
 def download_media(request: DownloadRequest):
-    raw_url = validate_url(str(request.url))
+    raw_url = validate_url(normalize_input_url(request.url))
     mode = (request.mode or "video").lower().strip()
     if mode not in ("video", "audio", "clip"):
         raise HTTPException(status_code=400, detail="نوع التحميل غير مدعوم")
