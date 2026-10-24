@@ -146,17 +146,11 @@ def is_allowed_host(hostname: str) -> bool:
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS or ["*"],
+    allow_origins=["*"],
     allow_credentials=False,
-    allow_methods=[
-        "GET",
-        "POST",
-        "OPTIONS",
-    ],
+    allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=[
-        "Content-Disposition",
-    ],
+    expose_headers=["Content-Disposition"],
     max_age=86400,
 )
 
