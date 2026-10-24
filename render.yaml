@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: snapmega-server
+    runtime: docker
+    plan: free
+    region: frankfurt
+
+    envVars:
+      - key: PORT
+        value: "10000"
+
+      - key: FRONTEND_ORIGINS
+        value: https://snapmega.pages.dev
+
+      - key: MAX_CONCURRENT_DOWNLOADS
+        value: "2"
+
+      - key: DOWNLOAD_TIMEOUT
+        value: "300"
+
+      - key: RATE_LIMIT_REQUESTS
+        value: "10"
+
+      - key: RATE_LIMIT_WINDOW
+        value: "60"
+
+      - key: MAX_OUTPUT_SIZE_MB
+        value: "500"
