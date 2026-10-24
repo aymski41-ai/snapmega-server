@@ -125,6 +125,7 @@ ALLOWED_ROOT_DOMAINS = {
     "youtube.com",
     "youtu.be",
     "youtube-nocookie.com",
+    "kick.com",
 }
 
 
