@@ -23,7 +23,7 @@ from starlette.background import BackgroundTask
 # SNAPMEGA GLOBAL PRODUCTION API
 # =========================================================
 
-APP_VERSION = "4.4.0"
+APP_VERSION = "4.5.0"
 
 app = FastAPI(
     title="SnapMega API",
@@ -607,7 +607,7 @@ def download_audio(
 
 
 # =========================================================
-# FAST STREAM CLIPPER (القص الصاروخي فائق السرعة دون تنزيل كامل البث)
+# FAST STREAM CLIPPER (القص فائق السرعة والمحسن لمنصة Kick)
 # =========================================================
 
 def create_clip(
@@ -617,12 +617,9 @@ def create_clip(
     end: float,
 ) -> Path:
     if shutil.which("ffmpeg") is None:
-        raise RuntimeError(
-            "FFmpeg is not installed."
-        )
+        raise RuntimeError("FFmpeg is not installed.")
 
     duration = end - start
-
     if duration <= 0:
         raise HTTPException(
             status_code=400,
@@ -631,9 +628,9 @@ def create_clip(
 
     clip_file = Path(directory) / "snapmega_clip.mp4"
 
-    # 1. جلب رابط الدفق المباشر بأسرع خيارات ممكنة دون تنزيل مسبق
+    # جلب رابط الدفق المباشر بأخف جودة ممكنة لتسريع المعالجة
     ydl_opts = {
-        "format": "best",
+        "format": "best[height<=720]/best",
         "skip_download": True,
         "quiet": True,
         "no_warnings": True,
@@ -645,6 +642,7 @@ def create_clip(
         }
     }
 
+    stream_url = None
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
@@ -655,21 +653,25 @@ def create_clip(
                 if formats:
                     stream_url = formats[-1]
 
-            if not stream_url:
-                raise RuntimeError("Could not resolve media stream URL.")
-
     except Exception:
+        pass
+
+    if not stream_url:
         source_file = download_video(url, directory)
         stream_url = str(source_file)
 
-    # 2. أمر ffmpeg السريع جداً: القفز المباشر والنسخ دون ضغط
+    # استخدام القفز السريع (-ss قبل -i) ونسخ البث مباشرة
     command = [
         "ffmpeg",
         "-y",
+        "-reconnect", "1",
+        "-reconnect_streamed", "1",
+        "-reconnect_delay_max", "2",
         "-ss", str(start),
         "-i", str(stream_url),
         "-t", str(duration),
         "-c", "copy",
+        "-bsf:a", "aac_adtstoasc",
         "-avoid_negative_ts", "make_zero",
         "-movflags", "+faststart",
         str(clip_file),
@@ -680,11 +682,11 @@ def create_clip(
             command,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-            timeout=120,
+            timeout=180,
             check=True,
         )
     except Exception:
-        # ترميز فائق السرعة في حال لم يتطابق النسخ المباشر
+        # ترميز فائق السرعة إذا تعذر النسخ المباشر
         fallback_cmd = [
             "ffmpeg",
             "-y",
@@ -703,7 +705,7 @@ def create_clip(
             fallback_cmd,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-            timeout=120,
+            timeout=180,
             check=True,
         )
 
