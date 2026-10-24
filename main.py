@@ -38,7 +38,7 @@ app = FastAPI(
 
 FRONTEND_ORIGINS_RAW = os.getenv(
     "FRONTEND_ORIGINS",
-    "https://snapmega.pages.dev",
+    "[https://snapmega.pages.dev](https://snapmega.pages.dev)",
 )
 
 ALLOWED_ORIGINS = [
@@ -48,8 +48,8 @@ ALLOWED_ORIGINS = [
 ]
 
 # Always allow the main Cloudflare Pages domain.
-if "https://snapmega.pages.dev" not in ALLOWED_ORIGINS:
-    ALLOWED_ORIGINS.append("https://snapmega.pages.dev")
+if "[https://snapmega.pages.dev](https://snapmega.pages.dev)" not in ALLOWED_ORIGINS:
+    ALLOWED_ORIGINS.append("[https://snapmega.pages.dev](https://snapmega.pages.dev)")
 
 
 def env_int(
@@ -58,12 +58,6 @@ def env_int(
     minimum: int,
     maximum: int,
 ) -> int:
-    """
-    Safely read an integer environment variable.
-
-    Invalid values fall back to the default.
-    Values outside the allowed range are clamped.
-    """
     raw = os.getenv(name, str(default)).strip()
 
     try:
@@ -140,7 +134,6 @@ def is_allowed_host(hostname: str) -> bool:
     for domain in ALLOWED_ROOT_DOMAINS:
         if hostname == domain:
             return True
-
         if hostname.endswith("." + domain):
             return True
 
@@ -180,12 +173,6 @@ download_semaphore = asyncio.Semaphore(
 
 
 def get_client_ip(request: Request) -> str:
-    """
-    Use the connection IP directly.
-
-    This avoids blindly trusting a user-controlled
-    X-Forwarded-For header.
-    """
     if request.client:
         return request.client.host
 
@@ -193,10 +180,6 @@ def get_client_ip(request: Request) -> str:
 
 
 def cleanup_rate_limit_store(now: float) -> None:
-    """
-    Remove expired IP entries so the in-memory
-    rate-limit dictionary does not grow forever.
-    """
     expired_ips = []
 
     for ip, requests in rate_limit_store.items():
@@ -215,7 +198,6 @@ def cleanup_rate_limit_store(now: float) -> None:
 def check_rate_limit(ip: str) -> None:
     now = time.monotonic()
 
-    # Periodically clean expired IPs.
     if len(rate_limit_store) > 1000:
         cleanup_rate_limit_store(now)
 
@@ -344,7 +326,6 @@ def validate_url(url: str) -> str:
 def parse_time(
     value: str | None,
 ) -> float | None:
-
     if value is None:
         return None
 
@@ -353,14 +334,12 @@ def parse_time(
     if not value:
         return None
 
-    # Seconds
     if re.fullmatch(
         r"\d+(\.\d+)?",
         value,
     ):
         return float(value)
 
-    # MM:SS
     match = re.fullmatch(
         r"(\d{1,3}):(\d{1,2})",
         value,
@@ -381,7 +360,6 @@ def parse_time(
             + seconds
         )
 
-    # HH:MM:SS
     match = re.fullmatch(
         r"(\d{1,2}):(\d{1,2}):(\d{1,2})",
         value,
@@ -431,7 +409,6 @@ def find_downloaded_file(
     directory: str,
     extensions: tuple[str, ...],
 ) -> Path | None:
-
     root = Path(directory)
     candidates = []
 
@@ -460,7 +437,6 @@ def find_downloaded_file(
 def validate_output_file(
     file_path: Path,
 ) -> None:
-
     if not file_path.exists():
         raise RuntimeError(
             "Download output was not created."
@@ -491,23 +467,17 @@ def validate_output_file(
 def base_ydl_options(
     output_template: str,
 ) -> dict:
-
     return {
         "outtmpl": output_template,
         "noplaylist": True,
         "quiet": True,
         "no_warnings": True,
         "ignoreconfig": True,
-
         "retries": 3,
         "fragment_retries": 3,
-
         "socket_timeout": 30,
-
         "concurrent_fragment_downloads": 2,
-
         "nocheckcertificate": False,
-
         "http_headers": {
             "User-Agent": (
                 "Mozilla/5.0 "
@@ -532,7 +502,6 @@ def download_video(
     url: str,
     directory: str,
 ) -> Path:
-
     output_template = str(
         Path(directory)
         / "snapmega_%(id)s.%(ext)s"
@@ -546,9 +515,7 @@ def download_video(
         "format": (
             "bestvideo*+bestaudio/best"
         ),
-
         "merge_output_format": "mp4",
-
         "extractor_args": {
             "youtube": {
                 "player_client": [
@@ -600,7 +567,6 @@ def download_audio(
     url: str,
     directory: str,
 ) -> Path:
-
     output_template = str(
         Path(directory)
         / "snapmega_%(id)s.%(ext)s"
@@ -612,7 +578,6 @@ def download_audio(
 
     options.update({
         "format": "bestaudio/best",
-
         "postprocessors": [
             {
                 "key": "FFmpegExtractAudio",
@@ -657,7 +622,6 @@ def create_clip(
     start: float,
     end: float,
 ) -> Path:
-
     if shutil.which("ffmpeg") is None:
         raise RuntimeError(
             "FFmpeg is not installed."
@@ -805,12 +769,7 @@ async def api_download(
     start = None
     end = None
 
-    # -----------------------------------------------------
-    # CLIP VALIDATION
-    # -----------------------------------------------------
-
     if payload.mode == "clip":
-
         start = parse_time(
             payload.clip_start
         )
@@ -862,11 +821,6 @@ async def api_download(
     temp_dir = None
 
     try:
-
-        # -------------------------------------------------
-        # CONCURRENCY LIMIT
-        # -------------------------------------------------
-
         try:
             await asyncio.wait_for(
                 download_semaphore.acquire(),
@@ -888,22 +842,12 @@ async def api_download(
                 },
             )
 
-        # -------------------------------------------------
-        # TEMP DIRECTORY
-        # -------------------------------------------------
-
         temp_dir = tempfile.mkdtemp(
             prefix="snapmega_"
         )
 
         try:
-
-            # ---------------------------------------------
-            # VIDEO
-            # ---------------------------------------------
-
             if payload.mode == "video":
-
                 file_path = (
                     await asyncio.wait_for(
                         asyncio.to_thread(
@@ -915,12 +859,7 @@ async def api_download(
                     )
                 )
 
-            # ---------------------------------------------
-            # AUDIO
-            # ---------------------------------------------
-
             elif payload.mode == "audio":
-
                 file_path = (
                     await asyncio.wait_for(
                         asyncio.to_thread(
@@ -932,12 +871,7 @@ async def api_download(
                     )
                 )
 
-            # ---------------------------------------------
-            # CLIP
-            # ---------------------------------------------
-
             else:
-
                 file_path = (
                     await asyncio.wait_for(
                         asyncio.to_thread(
@@ -951,44 +885,30 @@ async def api_download(
                     )
                 )
 
-            # ---------------------------------------------
-            # OUTPUT VALIDATION
-            # ---------------------------------------------
-
             validate_output_file(
                 file_path
             )
 
-            # ---------------------------------------------
-            # RESPONSE
-            # ---------------------------------------------
-
             if payload.mode == "audio":
-
                 filename = (
                     "snapmega-audio.mp3"
                 )
-
                 media_type = (
                     "audio/mpeg"
                 )
 
             elif payload.mode == "clip":
-
                 filename = (
                     "snapmega-clip.mp4"
                 )
-
                 media_type = (
                     "video/mp4"
                 )
 
             else:
-
                 filename = (
                     "snapmega-video.mp4"
                 )
-
                 media_type = (
                     "video/mp4"
                 )
@@ -1010,7 +930,6 @@ async def api_download(
             )
 
         except asyncio.TimeoutError:
-
             cleanup_dir(temp_dir)
 
             raise HTTPException(
@@ -1022,13 +941,10 @@ async def api_download(
             )
 
         except HTTPException:
-
             cleanup_dir(temp_dir)
-
             raise
 
         except yt_dlp.utils.DownloadError:
-
             cleanup_dir(temp_dir)
 
             raise HTTPException(
@@ -1042,7 +958,6 @@ async def api_download(
             )
 
         except Exception:
-
             cleanup_dir(temp_dir)
 
             raise HTTPException(
@@ -1054,7 +969,6 @@ async def api_download(
             )
 
     finally:
-
         if acquired:
             download_semaphore.release()
 
@@ -1099,7 +1013,6 @@ async def global_exception_handler(
 # =========================================================
 
 if __name__ == "__main__":
-
     import uvicorn
 
     port = int(
@@ -1115,4 +1028,3 @@ if __name__ == "__main__":
         port=port,
         reload=False,
     )
-```
