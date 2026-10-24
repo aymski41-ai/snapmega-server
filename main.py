@@ -506,17 +506,11 @@ def download_video(
     )
 
     options.update({
-        "format": (
-            "bestvideo*+bestaudio/best"
-        ),
+        "format": "best[ext=mp4]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best",
         "merge_output_format": "mp4",
         "extractor_args": {
             "youtube": {
-                "player_client": [
-                    "android",
-                    "web",
-                    "ios",
-                ]
+                "player_client": ["tvhtml5", "android", "ios"]
             }
         },
     })
@@ -552,7 +546,6 @@ def download_video(
         "Could not locate downloaded video."
     )
 
-
 # =========================================================
 # AUDIO
 # =========================================================
@@ -572,6 +565,11 @@ def download_audio(
 
     options.update({
         "format": "bestaudio/best",
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["tvhtml5", "android", "ios"]
+            }
+        },
         "postprocessors": [
             {
                 "key": "FFmpegExtractAudio",
