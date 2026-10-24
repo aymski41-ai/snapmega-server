@@ -23,12 +23,12 @@ from starlette.background import BackgroundTask
 # SNAPMEGA GLOBAL PRODUCTION API
 # =========================================================
 
-APP_VERSION = "4.3.0"
+APP_VERSION = "4.4.0"
 
 app = FastAPI(
     title="SnapMega API",
     version=APP_VERSION,
-    description="Global video downloader and stream clipper API",
+    description="Ultra-fast video downloader and stream clipper API",
 )
 
 
@@ -607,7 +607,7 @@ def download_audio(
 
 
 # =========================================================
-# FAST STREAM CLIPPER (القص فائق السرعة دون تنزيل كامل البث)
+# FAST STREAM CLIPPER (القص الصاروخي فائق السرعة دون تنزيل كامل البث)
 # =========================================================
 
 def create_clip(
@@ -626,18 +626,12 @@ def create_clip(
     if duration <= 0:
         raise HTTPException(
             status_code=400,
-            detail=(
-                "Clip end time must be "
-                "greater than start time."
-            ),
+            detail="Clip end time must be greater than start time.",
         )
 
-    clip_file = (
-        Path(directory)
-        / "snapmega_clip.mp4"
-    )
+    clip_file = Path(directory) / "snapmega_clip.mp4"
 
-    # 1. استخراج رابط البث المباشر (HLS / MP4 Stream URL) في ثوانٍ دون تنزيله كاملاً
+    # 1. جلب رابط الدفق المباشر بأسرع خيارات ممكنة دون تنزيل مسبق
     ydl_opts = {
         "format": "best",
         "skip_download": True,
@@ -657,7 +651,6 @@ def create_clip(
             stream_url = info.get("url")
 
             if not stream_url and "formats" in info:
-                # اختيار رابط متوافق
                 formats = [f["url"] for f in info["formats"] if f.get("url")]
                 if formats:
                     stream_url = formats[-1]
@@ -666,24 +659,19 @@ def create_clip(
                 raise RuntimeError("Could not resolve media stream URL.")
 
     except Exception:
-        # إذا تعذر استخراج الرابط المباشر، العودة للطريقة العادية
         source_file = download_video(url, directory)
         stream_url = str(source_file)
 
-    # 2. القفز السريع والنسخ المباشر عبر ffmpeg (Fast Seek)
+    # 2. أمر ffmpeg السريع جداً: القفز المباشر والنسخ دون ضغط
     command = [
         "ffmpeg",
         "-y",
-        "-ss",
-        str(start),
-        "-i",
-        stream_url,
-        "-t",
-        str(duration),
-        "-c",
-        "copy",  # نسخ مباشر دون ضغط لتسريع العملية
-        "-avoid_negative_ts",
-        "make_zero",
+        "-ss", str(start),
+        "-i", str(stream_url),
+        "-t", str(duration),
+        "-c", "copy",
+        "-avoid_negative_ts", "make_zero",
+        "-movflags", "+faststart",
         str(clip_file),
     ]
 
@@ -692,39 +680,35 @@ def create_clip(
             command,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-            timeout=DOWNLOAD_TIMEOUT,
+            timeout=120,
             check=True,
         )
-
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
-        # في حال فشل النسخ المباشر لترميز غير متطابق، إعادة ترميز سريعة
+    except Exception:
+        # ترميز فائق السرعة في حال لم يتطابق النسخ المباشر
         fallback_cmd = [
             "ffmpeg",
             "-y",
-            "-ss",
-            str(start),
-            "-i",
-            stream_url,
-            "-t",
-            str(duration),
-            "-c:v",
-            "libx264",
-            "-preset",
-            "ultrafast",
-            "-c:a",
-            "aac",
+            "-ss", str(start),
+            "-i", str(stream_url),
+            "-t", str(duration),
+            "-c:v", "libx264",
+            "-preset", "ultrafast",
+            "-tune", "zerolatency",
+            "-crf", "28",
+            "-c:a", "aac",
+            "-b:a", "128k",
             str(clip_file),
         ]
         subprocess.run(
             fallback_cmd,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-            timeout=DOWNLOAD_TIMEOUT,
+            timeout=120,
             check=True,
         )
 
     if not clip_file.exists() or clip_file.stat().st_size < 1024:
-        raise RuntimeError("Could not extract clip from the provided stream.")
+        raise RuntimeError("Failed to extract clip.")
 
     return clip_file
 
