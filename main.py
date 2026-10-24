@@ -23,7 +23,7 @@ from starlette.background import BackgroundTask
 # SNAPMEGA GLOBAL PRODUCTION API
 # =========================================================
 
-APP_VERSION = "4.5.0"
+APP_VERSION = "4.6.0"
 
 app = FastAPI(
     title="SnapMega API",
@@ -67,7 +67,6 @@ def env_int(
     return max(minimum, min(value, maximum))
 
 
-# السماح بقص مقاطع حتى ساعتين (120 دقيقة)
 MAX_CLIP_SECONDS = 120 * 60
 MAX_URL_LENGTH = 4096
 
@@ -516,8 +515,14 @@ def download_video(
         output_template
     )
 
+    # إذا كان الرابط من كيك، اختر جودة 360p تلقائياً لتسريع التحميل
+    if "kick.com" in url.lower():
+        format_selection = "best[height<=360]/bestvideo[height<=360]+bestaudio/best"
+    else:
+        format_selection = "best[ext=mp4]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best"
+
     options.update({
-        "format": "best[ext=mp4]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best",
+        "format": format_selection,
         "merge_output_format": "mp4",
     })
 
@@ -607,7 +612,7 @@ def download_audio(
 
 
 # =========================================================
-# FAST STREAM CLIPPER (القص فائق السرعة والمحسن لمنصة Kick)
+# FAST STREAM CLIPPER (القص فائق السرعة بجودة 360p تلقائياً)
 # =========================================================
 
 def create_clip(
@@ -628,9 +633,9 @@ def create_clip(
 
     clip_file = Path(directory) / "snapmega_clip.mp4"
 
-    # جلب رابط الدفق المباشر بأخف جودة ممكنة لتسريع المعالجة
+    # جلب رابط الدفق المباشر بجودة 360p تلقائياً لسرعة فائقة وخفة تامة
     ydl_opts = {
-        "format": "best[height<=720]/best",
+        "format": "best[height<=360]/best[height<=480]/best",
         "skip_download": True,
         "quiet": True,
         "no_warnings": True,
@@ -651,7 +656,7 @@ def create_clip(
             if not stream_url and "formats" in info:
                 formats = [f["url"] for f in info["formats"] if f.get("url")]
                 if formats:
-                    stream_url = formats[-1]
+                    stream_url = formats[0]  # اختيار أخف صيغة مباشرة
 
     except Exception:
         pass
@@ -660,7 +665,7 @@ def create_clip(
         source_file = download_video(url, directory)
         stream_url = str(source_file)
 
-    # استخدام القفز السريع (-ss قبل -i) ونسخ البث مباشرة
+    # أمر ffmpeg بالقفز السريع المباشر (-ss قبل -i) والنسخ دون إعادة معالجة
     command = [
         "ffmpeg",
         "-y",
@@ -686,19 +691,20 @@ def create_clip(
             check=True,
         )
     except Exception:
-        # ترميز فائق السرعة إذا تعذر النسخ المباشر
+        # إذا تعذر النسخ المباشر، تحويل سريع جداً بترميز خفيف ultrafast
         fallback_cmd = [
             "ffmpeg",
             "-y",
             "-ss", str(start),
             "-i", str(stream_url),
             "-t", str(duration),
+            "-vf", "scale=-2:360",
             "-c:v", "libx264",
             "-preset", "ultrafast",
             "-tune", "zerolatency",
-            "-crf", "28",
+            "-crf", "30",
             "-c:a", "aac",
-            "-b:a", "128k",
+            "-b:a", "96k",
             str(clip_file),
         ]
         subprocess.run(
