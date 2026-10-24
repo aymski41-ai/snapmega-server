@@ -23,12 +23,12 @@ from starlette.background import BackgroundTask
 # SNAPMEGA GLOBAL PRODUCTION API
 # =========================================================
 
-APP_VERSION = "4.2.0"
+APP_VERSION = "4.3.0"
 
 app = FastAPI(
     title="SnapMega API",
     version=APP_VERSION,
-    description="Global video downloader API",
+    description="Global video downloader and stream clipper API",
 )
 
 
@@ -38,7 +38,7 @@ app = FastAPI(
 
 FRONTEND_ORIGINS_RAW = os.getenv(
     "FRONTEND_ORIGINS",
-    "[https://snapmega.pages.dev](https://snapmega.pages.dev)",
+    "https://snapmega.pages.dev",
 )
 
 ALLOWED_ORIGINS = [
@@ -47,9 +47,8 @@ ALLOWED_ORIGINS = [
     if origin.strip()
 ]
 
-# Always allow the main Cloudflare Pages domain.
-if "[https://snapmega.pages.dev](https://snapmega.pages.dev)" not in ALLOWED_ORIGINS:
-    ALLOWED_ORIGINS.append("[https://snapmega.pages.dev](https://snapmega.pages.dev)")
+if "https://snapmega.pages.dev" not in ALLOWED_ORIGINS:
+    ALLOWED_ORIGINS.append("https://snapmega.pages.dev")
 
 
 def env_int(
@@ -68,7 +67,8 @@ def env_int(
     return max(minimum, min(value, maximum))
 
 
-MAX_CLIP_SECONDS = 15 * 60
+# السماح بقص مقاطع حتى ساعتين (120 دقيقة)
+MAX_CLIP_SECONDS = 120 * 60
 MAX_URL_LENGTH = 4096
 
 MAX_CONCURRENT_DOWNLOADS = env_int(
@@ -80,14 +80,14 @@ MAX_CONCURRENT_DOWNLOADS = env_int(
 
 DOWNLOAD_TIMEOUT = env_int(
     "DOWNLOAD_TIMEOUT",
-    300,
+    900,
     30,
-    1800,
+    3600,
 )
 
 RATE_LIMIT_REQUESTS = env_int(
     "RATE_LIMIT_REQUESTS",
-    10,
+    20,
     1,
     1000,
 )
@@ -468,11 +468,21 @@ def base_ydl_options(
         "quiet": True,
         "no_warnings": True,
         "ignoreconfig": True,
-        "retries": 3,
-        "fragment_retries": 3,
+        "retries": 5,
+        "fragment_retries": 5,
         "socket_timeout": 30,
         "concurrent_fragment_downloads": 2,
         "nocheckcertificate": False,
+        "live_from_start": False,
+        "hls_prefer_native": True,
+        "extractor_args": {
+            "kick": {
+                "include_offline": True,
+            },
+            "youtube": {
+                "player_client": ["tvhtml5", "android", "ios"]
+            }
+        },
         "http_headers": {
             "User-Agent": (
                 "Mozilla/5.0 "
@@ -509,11 +519,6 @@ def download_video(
     options.update({
         "format": "best[ext=mp4]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best",
         "merge_output_format": "mp4",
-        "extractor_args": {
-            "youtube": {
-                "player_client": ["tvhtml5", "android", "ios"]
-            }
-        },
     })
 
     with yt_dlp.YoutubeDL(options) as ydl:
@@ -547,6 +552,7 @@ def download_video(
         "Could not locate downloaded video."
     )
 
+
 # =========================================================
 # AUDIO
 # =========================================================
@@ -566,11 +572,6 @@ def download_audio(
 
     options.update({
         "format": "bestaudio/best",
-        "extractor_args": {
-            "youtube": {
-                "player_client": ["tvhtml5", "android", "ios"]
-            }
-        },
         "postprocessors": [
             {
                 "key": "FFmpegExtractAudio",
@@ -606,7 +607,7 @@ def download_audio(
 
 
 # =========================================================
-# CLIP
+# FAST STREAM CLIPPER (القص فائق السرعة دون تنزيل كامل البث)
 # =========================================================
 
 def create_clip(
@@ -620,16 +621,6 @@ def create_clip(
             "FFmpeg is not installed."
         )
 
-    source_file = download_video(
-        url,
-        directory,
-    )
-
-    clip_file = (
-        Path(directory)
-        / "snapmega_clip.mp4"
-    )
-
     duration = end - start
 
     if duration <= 0:
@@ -641,27 +632,58 @@ def create_clip(
             ),
         )
 
+    clip_file = (
+        Path(directory)
+        / "snapmega_clip.mp4"
+    )
+
+    # 1. استخراج رابط البث المباشر (HLS / MP4 Stream URL) في ثوانٍ دون تنزيله كاملاً
+    ydl_opts = {
+        "format": "best",
+        "skip_download": True,
+        "quiet": True,
+        "no_warnings": True,
+        "live_from_start": False,
+        "extractor_args": {
+            "kick": {
+                "include_offline": True,
+            }
+        }
+    }
+
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            stream_url = info.get("url")
+
+            if not stream_url and "formats" in info:
+                # اختيار رابط متوافق
+                formats = [f["url"] for f in info["formats"] if f.get("url")]
+                if formats:
+                    stream_url = formats[-1]
+
+            if not stream_url:
+                raise RuntimeError("Could not resolve media stream URL.")
+
+    except Exception:
+        # إذا تعذر استخراج الرابط المباشر، العودة للطريقة العادية
+        source_file = download_video(url, directory)
+        stream_url = str(source_file)
+
+    # 2. القفز السريع والنسخ المباشر عبر ffmpeg (Fast Seek)
     command = [
         "ffmpeg",
         "-y",
         "-ss",
         str(start),
         "-i",
-        str(source_file),
+        stream_url,
         "-t",
         str(duration),
-        "-c:v",
-        "libx264",
-        "-preset",
-        "veryfast",
-        "-crf",
-        "23",
-        "-c:a",
-        "aac",
-        "-b:a",
-        "128k",
-        "-movflags",
-        "+faststart",
+        "-c",
+        "copy",  # نسخ مباشر دون ضغط لتسريع العملية
+        "-avoid_negative_ts",
+        "make_zero",
         str(clip_file),
     ]
 
@@ -674,15 +696,35 @@ def create_clip(
             check=True,
         )
 
-    except subprocess.TimeoutExpired:
-        raise RuntimeError(
-            "Clip processing timed out."
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        # في حال فشل النسخ المباشر لترميز غير متطابق، إعادة ترميز سريعة
+        fallback_cmd = [
+            "ffmpeg",
+            "-y",
+            "-ss",
+            str(start),
+            "-i",
+            stream_url,
+            "-t",
+            str(duration),
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-c:a",
+            "aac",
+            str(clip_file),
+        ]
+        subprocess.run(
+            fallback_cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=DOWNLOAD_TIMEOUT,
+            check=True,
         )
 
-    except subprocess.CalledProcessError:
-        raise RuntimeError(
-            "Could not create clip."
-        )
+    if not clip_file.exists() or clip_file.stat().st_size < 1024:
+        raise RuntimeError("Could not extract clip from the provided stream.")
 
     return clip_file
 
@@ -805,8 +847,7 @@ async def api_download(
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    "Maximum clip duration "
-                    "is 15 minutes."
+                    f"Maximum clip duration is {MAX_CLIP_SECONDS // 60} minutes."
                 ),
             )
 
@@ -937,28 +978,25 @@ async def api_download(
             cleanup_dir(temp_dir)
             raise
 
-        except yt_dlp.utils.DownloadError:
+        except yt_dlp.utils.DownloadError as err:
             cleanup_dir(temp_dir)
 
+            err_str = str(err)
             raise HTTPException(
                 status_code=422,
                 detail=(
-                    "This video could not be "
-                    "downloaded. It may be private, "
-                    "unavailable, restricted, "
-                    "or unsupported."
+                    err_str
+                    if "offline" in err_str.lower()
+                    else "This video could not be downloaded. It may be private, unavailable, restricted, or unsupported."
                 ),
             )
 
-        except Exception:
+        except Exception as e:
             cleanup_dir(temp_dir)
 
             raise HTTPException(
                 status_code=500,
-                detail=(
-                    "Download failed. "
-                    "Please try again later."
-                ),
+                detail=str(e) or "Download failed. Please try again later.",
             )
 
     finally:
