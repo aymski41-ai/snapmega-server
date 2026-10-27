@@ -5,6 +5,7 @@ import shutil
 import tempfile
 import asyncio
 import subprocess
+import urllib.request
 
 from pathlib import Path
 from urllib.parse import urlparse
@@ -23,7 +24,7 @@ from starlette.background import BackgroundTask
 # SNAPMEGA GLOBAL PRODUCTION API
 # =========================================================
 
-APP_VERSION = "4.7.0"
+APP_VERSION = "4.8.0"
 
 app = FastAPI(
     title="SnapMega API",
@@ -143,6 +144,20 @@ class DownloadRequest(BaseModel):
 # URL HELPERS
 # =========================================================
 
+def unshorten_url(url: str) -> str:
+    """فك روابط فيسبوك وتيك توك المختصرة لمنع حلقة التوجيه 302"""
+    try:
+        req = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+            }
+        )
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            return resp.geturl()
+    except Exception:
+        return url
+
 def clean_target_url(url: str) -> str:
     url = url.strip()
     if url.startswith("tps://"):
@@ -153,6 +168,11 @@ def clean_target_url(url: str) -> str:
         url = "https:" + url
     elif not re.match(r"^https?://", url, re.I):
         url = "https://" + url
+
+    # حل مشكلة الروابط المختصرة فوراً
+    if "fb.watch" in url or "fb.com" in url or "vt.tiktok.com" in url or "vm.tiktok.com" in url:
+        url = unshorten_url(url)
+
     return url
 
 def validate_url(url: str) -> str:
@@ -493,7 +513,6 @@ async def api_download(payload: DownloadRequest, request: Request):
         except yt_dlp.utils.DownloadError as err:
             cleanup_dir(temp_dir)
             clean_err = str(err).splitlines()[0] if str(err) else "Media download failed"
-            # تنظيف رسائل yt-dlp لإعطاء رسالة واضحة للمستخدم
             clean_err = re.sub(r"ERROR:\s*", "", clean_err)
             raise HTTPException(status_code=422, detail=clean_err)
 
