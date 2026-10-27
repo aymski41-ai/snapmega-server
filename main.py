@@ -22,15 +22,14 @@ from fastapi import (
 
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.background import BackgroundTasks
-from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from fastapi.responses import FileResponse, JSONResponse
 
 
 # ============================================================
-# SNAPMEGA API - v6.5.0 (FINAL PRODUCTION CODE)
+# SNAPMEGA API - v6.5.1
 # ============================================================
 
-APP_VERSION = "6.5.0"
+APP_VERSION = "6.5.1"
 
 MAX_CLIP_SECONDS = int(os.getenv("MAX_CLIP_SECONDS", "7200"))
 MAX_URL_LENGTH = int(os.getenv("MAX_URL_LENGTH", "4096"))
@@ -100,24 +99,6 @@ def check_rate_limit(ip: str):
         )
 
     timestamps.append(now)
-
-
-# ============================================================
-# REQUEST MODEL
-# ============================================================
-
-class DownloadRequest(BaseModel):
-    url: str = Field(
-        ...,
-        min_length=1,
-        max_length=MAX_URL_LENGTH,
-    )
-    mode: str = Field(
-        default="video",
-        pattern="^(video|audio|clip)$",
-    )
-    clip_start: float | None = None
-    clip_end: float | None = None
 
 
 # ============================================================
@@ -210,7 +191,6 @@ def normalize_youtube_url(url: str) -> str:
 
 
 def resolve_fb_watch(url: str) -> str:
-    """فك روابط fb.watch بـ curl-cffi لتجاوز خطأ 302"""
     try:
         session = curl_requests.Session(impersonate="chrome120")
         resp = session.get(url, allow_redirects=True, timeout=12)
@@ -285,12 +265,10 @@ def apply_youtube_options(options: dict) -> dict:
     )
     options["merge_output_format"] = "mp4"
 
-    # قراءة ملف الكوكيز تلقائياً في حال وجوده في المستودع
     cookie_file = Path("cookies.txt")
     if cookie_file.is_file() and cookie_file.stat().st_size > 0:
         options["cookiefile"] = str(cookie_file.resolve())
     else:
-        # إعدادات تخطي فحص الروبوت عند عدم توفر ملف الكوكيز
         options["extractor_args"] = {
             "youtube": {
                 "player_client": ["tvhtml5", "ios"],
@@ -311,20 +289,16 @@ def apply_audio_options(options: dict) -> dict:
     return options
 
 
-def validate_clip(clip_start: float | None, clip_end: float | None):
-    if clip_start is None:
-        raise HTTPException(status_code=400, detail="clip_start is required.")
-    if clip_end is None:
-        raise HTTPException(status_code=400, detail="clip_end is required.")
-    if clip_start < 0:
-        raise HTTPException(status_code=400, detail="clip_start cannot be negative.")
-    if clip_end <= clip_start:
-        raise HTTPException(status_code=400, detail="clip_end must be greater than clip_start.")
-    if clip_end - clip_start > MAX_CLIP_SECONDS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Clip cannot exceed {MAX_CLIP_SECONDS} seconds.",
-        )
+def parse_float_safe(val) -> float | None:
+    if val is None:
+        return None
+    try:
+        s = str(val).strip()
+        if not s:
+            return None
+        return float(s)
+    except Exception:
+        return None
 
 
 # ============================================================
@@ -437,13 +411,13 @@ async def download_media(
             )
             options["merge_output_format"] = "mp4"
 
-    if mode == "clip":
-        validate_clip(clip_start, clip_end)
-        options["download_ranges"] = lambda info_dict, ydl: [{
-            "start_time": clip_start,
-            "end_time": clip_end,
-        }]
-        options["force_keyframes_at_cuts"] = True
+    if mode == "clip" and clip_start is not None and clip_end is not None:
+        if clip_end > clip_start:
+            options["download_ranges"] = lambda info_dict, ydl: [{
+                "start_time": clip_start,
+                "end_time": clip_end,
+            }]
+            options["force_keyframes_at_cuts"] = True
 
     try:
         def run_download():
@@ -474,10 +448,7 @@ async def download_media(
 
         if youtube:
             if "sign in to confirm" in err_lower or "not a bot" in err_lower:
-                detail = (
-                    "YouTube restricted this download on cloud servers. "
-                    "Upload cookies.txt to your repository to unlock full YouTube access."
-                )
+                detail = "YouTube restricted this download on cloud servers. Please recheck cookies.txt."
             elif "login required" in err_lower or "private" in err_lower:
                 detail = "This YouTube video requires login or is private."
             elif "age-restricted" in err_lower:
@@ -499,7 +470,7 @@ async def download_media(
                 err.splitlines()[0] if err else "Download failed.",
             )
 
-        raise HTTPException(status_code=422, detail=detail)
+        raise HTTPException(status_code=400, detail=detail)
 
     output_file = find_output_file(output_dir)
     if output_file is None:
@@ -542,22 +513,22 @@ async def health():
         "has_cookies": Path("cookies.txt").exists(),
         "ffmpeg": shutil.which("ffmpeg") is not None,
         "yt_dlp": getattr(yt_dlp, "__version__", "unknown"),
-        "limits": {
-            "max_clip_seconds": MAX_CLIP_SECONDS,
-            "max_concurrent_downloads": MAX_CONCURRENT_DOWNLOADS,
-            "download_timeout": DOWNLOAD_TIMEOUT,
-            "max_output_size_mb": MAX_OUTPUT_SIZE_MB,
-        },
     }
 
 
 @app.post("/api/download")
 async def api_download(
     request: Request,
-    payload: DownloadRequest,
     background_tasks: BackgroundTasks,
 ):
-    url = payload.url.strip()
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON format.")
+
+    # استخراج الرابط بأي تسمية محتملة من الواجهة
+    raw_url = body.get("url") or body.get("link") or body.get("videoUrl") or ""
+    url = str(raw_url).strip()
 
     if not url:
         raise HTTPException(status_code=400, detail="URL is required.")
@@ -579,16 +550,19 @@ async def api_download(
 
     check_rate_limit(client_ip)
 
+    mode = str(body.get("mode") or "video").lower()
+    start_val = parse_float_safe(body.get("clip_start") or body.get("start"))
+    end_val = parse_float_safe(body.get("clip_end") or body.get("end"))
+
     result = await download_media(
         url=url,
-        mode=payload.mode,
-        clip_start=payload.clip_start,
-        clip_end=payload.clip_end,
+        mode=mode,
+        clip_start=start_val,
+        clip_end=end_val,
     )
 
     file_path = Path(result["path"])
 
-    # حذف المجلد المؤقت تلقائياً بعد اكتمال إرسال الملف
     background_tasks.add_task(
         cleanup_temp_directory,
         result["temp_dir"],
@@ -596,7 +570,7 @@ async def api_download(
 
     media_type = (
         "audio/mpeg"
-        if payload.mode == "audio"
+        if mode == "audio"
         else "video/mp4"
     )
 
@@ -612,9 +586,14 @@ async def api_download(
     )
 
 
-# ============================================================
-# START SERVER
-# ============================================================
+# معالج أخطاء مخصص لإرجاع نصوص واضحة بدلاً من [object Object]
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": str(exc.detail)},
+    )
+
 
 if __name__ == "__main__":
     import uvicorn
