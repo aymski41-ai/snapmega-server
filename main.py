@@ -26,10 +26,10 @@ from fastapi.responses import FileResponse, JSONResponse
 
 
 # ============================================================
-# SNAPMEGA API - v6.5.4
+# SNAPMEGA API - v6.5.5
 # ============================================================
 
-APP_VERSION = "6.5.4"
+APP_VERSION = "6.5.5"
 
 MAX_CLIP_SECONDS = int(os.getenv("MAX_CLIP_SECONDS", "7200"))
 MAX_URL_LENGTH = int(os.getenv("MAX_URL_LENGTH", "4096"))
@@ -286,11 +286,10 @@ def apply_youtube_options(options: dict) -> dict:
         options["cookiefile"] = cookie_path
         print(f"[SnapMega] Active cookies from: {cookie_path}", flush=True)
 
-    # تشغيل عملاء الأجهزة الذكية بالتوازي مع الكوكيز لتجاوز طلب التحقق السحابي
+    # استخدام عملاء tv و mweb دون تعطيل فحص الصفحات لضمان استخراج البيانات
     options["extractor_args"] = {
         "youtube": {
-            "player_client": ["android", "ios", "tvhtml5"],
-            "player_skip": ["webpage", "configs"],
+            "player_client": ["tv", "mweb", "web"],
         }
     }
 
