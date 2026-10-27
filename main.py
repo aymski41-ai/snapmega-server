@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
 
 
-APP_VERSION = "5.9.0"
+APP_VERSION = "5.9.1"
 
 app = FastAPI(
     title="SnapMega API",
@@ -166,6 +166,7 @@ def resolve_fb_watch_url(url: str) -> str | None:
         session = curl_requests.Session(impersonate="chrome120")
         resp = session.get(url, allow_redirects=True, timeout=12)
         final_url = str(resp.url)
+        
         if "login" in final_url or "checkpoint" in final_url or "next=" in final_url:
             m = re.search(r"v%3D(\d+)", final_url) or re.search(r"videos%2F(\d+)", final_url)
             if m:
@@ -257,12 +258,18 @@ def download_video(url: str, directory: str) -> Path:
                 "Origin": "https://m.facebook.com",
             })
         elif is_youtube_url(target):
-            # إعدادات مخصصة لتجاوز فحص الروبوت الخاص بيوتيوب
+            # تحويل روابط shorts إلى روابط watch القياسية
+            if "/shorts/" in target:
+                video_id = target.split("/shorts/")[1].split("?")[0].split("/")[0]
+                target = f"https://www.youtube.com/watch?v={video_id}"
+
+            # استخدام عملاء تجاوز كشف الروبوت لمراكز البيانات
             options["format"] = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
             options["merge_output_format"] = "mp4"
             options["extractor_args"] = {
                 "youtube": {
-                    "player_client": ["android", "ios"],
+                    "player_client": ["tv_embedded", "mweb", "android_creator"],
+                    "player_skip": ["webpage", "configs"],
                 }
             }
         elif "kick.com" in target.lower():
@@ -319,9 +326,14 @@ def download_audio(url: str, directory: str) -> Path:
                 "Origin": "https://m.facebook.com",
             })
         elif is_youtube_url(target):
+            if "/shorts/" in target:
+                video_id = target.split("/shorts/")[1].split("?")[0].split("/")[0]
+                target = f"https://www.youtube.com/watch?v={video_id}"
+
             options["extractor_args"] = {
                 "youtube": {
-                    "player_client": ["android", "ios"],
+                    "player_client": ["tv_embedded", "mweb", "android_creator"],
+                    "player_skip": ["webpage", "configs"],
                 }
             }
 
@@ -451,6 +463,8 @@ async def api_download(payload: DownloadRequest, request: Request):
             detail = "YouTube restricted this download on cloud servers. Try another video link or format."
         elif "private" in err_lower or "login" in err_lower:
             detail = "This video is private or requires login."
+        elif "cannot parse data" in err_lower:
+            detail = "Facebook data layout changed or restricted. Please try another video."
         else:
             detail = re.sub(r"ERROR:\s*", "", str(err).splitlines()[0] if str(err) else "Download failed.")
         raise HTTPException(status_code=422, detail=detail)
