@@ -26,10 +26,10 @@ from fastapi.responses import FileResponse, JSONResponse
 
 
 # ============================================================
-# SNAPMEGA API - v6.5.2
+# SNAPMEGA API - v6.5.3 (FINAL ALL-IN-ONE)
 # ============================================================
 
-APP_VERSION = "6.5.2"
+APP_VERSION = "6.5.3"
 
 MAX_CLIP_SECONDS = int(os.getenv("MAX_CLIP_SECONDS", "7200"))
 MAX_URL_LENGTH = int(os.getenv("MAX_URL_LENGTH", "4096"))
@@ -224,6 +224,26 @@ def normalize_url(url: str) -> str:
 
 
 # ============================================================
+# COOKIES HELPER
+# ============================================================
+
+def get_valid_cookie_path() -> str | None:
+    potential_paths = [
+        Path("/app/cookies.txt"),
+        Path("cookies.txt"),
+        Path(__file__).resolve().parent / "cookies.txt",
+    ]
+
+    for p in potential_paths:
+        try:
+            if p.is_file() and p.stat().st_size > 0:
+                return str(p.resolve())
+        except OSError:
+            continue
+    return None
+
+
+# ============================================================
 # YT-DLP OPTIONS CONFIGURATION
 # ============================================================
 
@@ -258,18 +278,18 @@ def base_ydl_options(output_dir: str) -> dict:
 
 
 def apply_youtube_options(options: dict) -> dict:
-    # قبول أفضل فيديو وصوت متاحين بمرونة ودمجهما في mp4 لتفادي خطأ format not available
     options["format"] = "bestvideo*+bestaudio/best"
     options["merge_output_format"] = "mp4"
 
-    cookie_file = Path("cookies.txt")
-    if cookie_file.is_file() and cookie_file.stat().st_size > 0:
-        options["cookiefile"] = str(cookie_file.resolve())
+    cookie_path = get_valid_cookie_path()
+    if cookie_path:
+        options["cookiefile"] = cookie_path
+        print(f"[SnapMega] Active cookies from: {cookie_path}", flush=True)
     else:
+        print("[SnapMega] WARNING: No cookies.txt found!", flush=True)
         options["extractor_args"] = {
             "youtube": {
-                "player_client": ["tvhtml5", "ios"],
-                "player_skip": ["configs"],
+                "player_client": ["android", "ios", "tvhtml5"],
             }
         }
 
@@ -440,7 +460,7 @@ async def download_media(
 
         if youtube:
             if "sign in to confirm" in err_lower or "not a bot" in err_lower:
-                detail = "YouTube restricted this download on cloud servers. Please recheck cookies.txt."
+                detail = "YouTube rejected the server IP. Please confirm cookies.txt is properly deployed."
             elif "login required" in err_lower or "private" in err_lower:
                 detail = "This YouTube video requires login or is private."
             elif "age-restricted" in err_lower:
@@ -488,21 +508,24 @@ async def download_media(
 
 @app.get("/")
 async def root():
+    cookie_path = get_valid_cookie_path()
     return {
         "name": "SnapMega",
         "version": APP_VERSION,
         "status": "online",
-        "has_cookies": Path("cookies.txt").exists(),
+        "has_cookies": cookie_path is not None,
+        "cookie_path": cookie_path,
     }
 
 
 @app.get("/health")
 async def health():
+    cookie_path = get_valid_cookie_path()
     return {
         "status": "ok",
         "app": "SnapMega",
         "version": APP_VERSION,
-        "has_cookies": Path("cookies.txt").exists(),
+        "has_cookies": cookie_path is not None,
         "ffmpeg": shutil.which("ffmpeg") is not None,
         "yt_dlp": getattr(yt_dlp, "__version__", "unknown"),
     }
