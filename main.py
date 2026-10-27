@@ -1,14 +1,11 @@
 import os
 import re
 import time
+import asyncio
 import shutil
 import tempfile
-import asyncio
-import subprocess
-
 from pathlib import Path
 from urllib.parse import urlparse
-from collections import defaultdict, deque
 
 try:
     from curl_cffi import requests as curl_requests
@@ -17,61 +14,41 @@ except ImportError:
 
 import yt_dlp
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import (
+    FastAPI,
+    HTTPException,
+    Request,
+)
+
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.background import BackgroundTasks
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
-from starlette.background import BackgroundTask
 
 
-APP_VERSION = "5.9.1"
+# ============================================================
+# SNAPMEGA API - v6.5.0 (FINAL PRODUCTION CODE)
+# ============================================================
+
+APP_VERSION = "6.5.0"
+
+MAX_CLIP_SECONDS = int(os.getenv("MAX_CLIP_SECONDS", "7200"))
+MAX_URL_LENGTH = int(os.getenv("MAX_URL_LENGTH", "4096"))
+MAX_CONCURRENT_DOWNLOADS = int(os.getenv("MAX_CONCURRENT_DOWNLOADS", "3"))
+DOWNLOAD_TIMEOUT = int(os.getenv("DOWNLOAD_TIMEOUT", "900"))
+RATE_LIMIT_REQUESTS = int(os.getenv("RATE_LIMIT_REQUESTS", "60"))
+RATE_LIMIT_WINDOW = int(os.getenv("RATE_LIMIT_WINDOW", "60"))
+MAX_OUTPUT_SIZE_MB = int(os.getenv("MAX_OUTPUT_SIZE_MB", "500"))
+
+
+# ============================================================
+# APP & CORS
+# ============================================================
 
 app = FastAPI(
     title="SnapMega API",
     version=APP_VERSION,
-    description="Global video downloader API",
 )
-
-ALLOWED_ORIGINS = ["*"]
-
-def env_int(name: str, default: int, minimum: int, maximum: int) -> int:
-    raw = os.getenv(name, str(default)).strip()
-    try:
-        value = int(raw)
-    except (TypeError, ValueError):
-        return default
-    return max(minimum, min(value, maximum))
-
-MAX_CLIP_SECONDS = env_int("MAX_CLIP_SECONDS", 120 * 60, 30, 4 * 60 * 60)
-MAX_URL_LENGTH = env_int("MAX_URL_LENGTH", 4096, 100, 20000)
-MAX_CONCURRENT_DOWNLOADS = env_int("MAX_CONCURRENT_DOWNLOADS", 3, 1, 10)
-DOWNLOAD_TIMEOUT = env_int("DOWNLOAD_TIMEOUT", 900, 30, 3600)
-RATE_LIMIT_REQUESTS = env_int("RATE_LIMIT_REQUESTS", 60, 1, 1000)
-RATE_LIMIT_WINDOW = env_int("RATE_LIMIT_WINDOW", 60, 10, 3600)
-MAX_OUTPUT_SIZE_MB = env_int("MAX_OUTPUT_SIZE_MB", 500, 10, 2048)
-MAX_OUTPUT_SIZE_BYTES = MAX_OUTPUT_SIZE_MB * 1024 * 1024
-
-ALLOWED_ROOT_DOMAINS = {
-    "tiktok.com",
-    "instagram.com",
-    "instagr.am",
-    "facebook.com",
-    "fb.com",
-    "fb.watch",
-    "youtube.com",
-    "youtu.be",
-    "youtube-nocookie.com",
-    "kick.com",
-}
-
-def is_allowed_host(hostname: str) -> bool:
-    if not hostname:
-        return False
-    hostname = hostname.lower().rstrip(".")
-    for domain in ALLOWED_ROOT_DOMAINS:
-        if hostname == domain or hostname.endswith("." + domain):
-            return True
-    return False
 
 app.add_middleware(
     CORSMiddleware,
@@ -79,411 +56,573 @@ app.add_middleware(
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["Content-Disposition", "Content-Type", "Content-Length"],
-    max_age=86400,
+    expose_headers=[
+        "Content-Disposition",
+        "Content-Type",
+        "Content-Length",
+    ],
 )
 
-rate_limit_store = defaultdict(deque)
+
+# ============================================================
+# CONCURRENCY & RATE LIMIT
+# ============================================================
+
 download_semaphore = asyncio.Semaphore(MAX_CONCURRENT_DOWNLOADS)
+request_log: dict[str, list[float]] = {}
 
-def get_client_ip(request: Request) -> str:
-    if request.client:
-        return request.client.host
-    return "unknown"
 
-def check_rate_limit(ip: str) -> None:
-    now = time.monotonic()
-    reqs = rate_limit_store[ip]
-    while reqs and (now - reqs[0] > RATE_LIMIT_WINDOW):
-        reqs.popleft()
-    if len(reqs) >= RATE_LIMIT_REQUESTS:
+def cleanup_rate_limit():
+    now = time.time()
+    expired = [
+        ip
+        for ip, timestamps in request_log.items()
+        if not timestamps or now - timestamps[-1] > RATE_LIMIT_WINDOW
+    ]
+    for ip in expired:
+        request_log.pop(ip, None)
+
+
+def check_rate_limit(ip: str):
+    cleanup_rate_limit()
+    now = time.time()
+    timestamps = request_log.setdefault(ip, [])
+
+    timestamps[:] = [
+        t for t in timestamps
+        if now - t < RATE_LIMIT_WINDOW
+    ]
+
+    if len(timestamps) >= RATE_LIMIT_REQUESTS:
         raise HTTPException(
             status_code=429,
             detail="Too many requests. Please try again later.",
-            headers={"Retry-After": str(RATE_LIMIT_WINDOW)},
         )
-    reqs.append(now)
+
+    timestamps.append(now)
+
+
+# ============================================================
+# REQUEST MODEL
+# ============================================================
 
 class DownloadRequest(BaseModel):
-    url: str = Field(..., min_length=4, max_length=MAX_URL_LENGTH)
-    mode: str = Field(default="video", pattern=r"^(video|audio|clip)$")
-    clip_start: str | None = Field(default=None, max_length=12)
-    clip_end: str | None = Field(default=None, max_length=12)
+    url: str = Field(
+        ...,
+        min_length=1,
+        max_length=MAX_URL_LENGTH,
+    )
+    mode: str = Field(
+        default="video",
+        pattern="^(video|audio|clip)$",
+    )
+    clip_start: float | None = None
+    clip_end: float | None = None
 
-def clean_target_url(raw_url: str) -> str:
-    url = str(raw_url or "").strip().replace("[", "").replace("]", "")
-    if url.startswith("tps://"):
-        url = "h" + url
-    elif url.startswith("ps://"):
-        url = "htt" + url
-    elif url.startswith("//"):
-        url = "https:" + url
-    elif not re.match(r"^https?://", url, re.I):
-        url = "https://" + url
-    return url
 
-def validate_url(raw_url: str) -> str:
-    url = clean_target_url(raw_url)
+# ============================================================
+# ALLOWED DOMAINS & VALIDATION
+# ============================================================
+
+ALLOWED_DOMAINS = {
+    "youtube.com",
+    "m.youtube.com",
+    "youtu.be",
+    "tiktok.com",
+    "vm.tiktok.com",
+    "instagram.com",
+    "facebook.com",
+    "fb.watch",
+    "fb.com",
+    "kick.com",
+}
+
+
+def get_hostname(url: str) -> str:
     try:
         parsed = urlparse(url)
+        hostname = (parsed.hostname or "").lower()
+        if hostname.startswith("www."):
+            hostname = hostname[4:]
+        return hostname
     except Exception:
-        raise HTTPException(status_code=400, detail="Invalid URL structure.")
+        return ""
 
-    if parsed.scheme not in {"http", "https"}:
-        raise HTTPException(status_code=400, detail="Invalid URL scheme.")
 
-    hostname = (parsed.hostname or "").lower().rstrip(".")
-    if not hostname or not is_allowed_host(hostname):
-        raise HTTPException(status_code=400, detail="This platform is not supported.")
+def is_allowed_url(url: str) -> bool:
+    hostname = get_hostname(url)
+    if not hostname:
+        return False
+    return any(
+        hostname == domain or hostname.endswith("." + domain)
+        for domain in ALLOWED_DOMAINS
+    )
+
+
+def is_youtube_url(url: str) -> bool:
+    hostname = get_hostname(url)
+    return hostname in {
+        "youtube.com",
+        "m.youtube.com",
+        "youtu.be",
+    }
+
+
+def is_fb_watch_url(url: str) -> bool:
+    hostname = get_hostname(url)
+    return hostname == "fb.watch" or hostname.endswith(".fb.watch")
+
+
+def is_facebook_url(url: str) -> bool:
+    hostname = get_hostname(url)
+    return any(
+        hostname == domain or hostname.endswith("." + domain)
+        for domain in [
+            "facebook.com",
+            "fb.com",
+            "fb.watch",
+        ]
+    )
+
+
+# ============================================================
+# URL NORMALIZATION
+# ============================================================
+
+def normalize_youtube_url(url: str) -> str:
+    match = re.search(
+        r"youtube\.com/shorts/([^/?#]+)",
+        url,
+        re.IGNORECASE,
+    )
+    if match:
+        return "https://www.youtube.com/watch?v=" + match.group(1)
+
+    match = re.search(
+        r"youtu\.be/([^/?#]+)",
+        url,
+        re.IGNORECASE,
+    )
+    if match:
+        return "https://www.youtube.com/watch?v=" + match.group(1)
 
     return url
 
-def is_fb_watch_url(url: str) -> bool:
-    try:
-        host = (urlparse(url).hostname or "").lower().rstrip(".")
-        return host == "fb.watch" or host.endswith(".fb.watch")
-    except Exception:
-        return False
 
-def is_facebook_url(url: str) -> bool:
-    try:
-        host = (urlparse(url).hostname or "").lower().rstrip(".")
-        return any(host == d or host.endswith("." + d) for d in ["facebook.com", "fb.com", "fb.watch"])
-    except Exception:
-        return False
-
-def is_youtube_url(url: str) -> bool:
-    try:
-        host = (urlparse(url).hostname or "").lower().rstrip(".")
-        return any(host == d or host.endswith("." + d) for d in ["youtube.com", "youtu.be", "youtube-nocookie.com"])
-    except Exception:
-        return False
-
-def resolve_fb_watch_url(url: str) -> str | None:
-    if not is_fb_watch_url(url):
-        return None
+def resolve_fb_watch(url: str) -> str:
+    """فك روابط fb.watch بـ curl-cffi لتجاوز خطأ 302"""
     try:
         session = curl_requests.Session(impersonate="chrome120")
         resp = session.get(url, allow_redirects=True, timeout=12)
         final_url = str(resp.url)
-        
-        if "login" in final_url or "checkpoint" in final_url or "next=" in final_url:
+
+        if (
+            "login" in final_url
+            or "checkpoint" in final_url
+            or "next=" in final_url
+        ):
             m = re.search(r"v%3D(\d+)", final_url) or re.search(r"videos%2F(\d+)", final_url)
             if m:
-                return f"https://www.facebook.com/watch/?v={m.group(1)}"
+                return "https://www.facebook.com/watch/?v=" + m.group(1)
+
             canon = re.search(r'<link\s+rel="canonical"\s+href="([^"]+)"', resp.text)
             if canon:
                 return canon.group(1)
+
         return final_url
     except Exception:
-        return None
+        return url
 
-def parse_time(value: str | None) -> float | None:
-    if not value or not value.strip():
-        return None
-    val = value.strip()
-    if re.fullmatch(r"\d+(\.\d+)?", val):
-        return float(val)
-    m = re.fullmatch(r"(\d{1,3}):(\d{1,2})", val)
-    if m:
-        return int(m.group(1)) * 60 + int(m.group(2))
-    return None
 
-def cleanup_dir(directory: str | None) -> None:
-    if directory:
-        try:
-            shutil.rmtree(directory, ignore_errors=True)
-        except Exception:
-            pass
+def normalize_url(url: str) -> str:
+    url = url.strip()
+    if is_youtube_url(url):
+        return normalize_youtube_url(url)
+    if is_fb_watch_url(url):
+        return resolve_fb_watch(url)
+    return url
 
-def find_downloaded_file(directory: str, extensions: tuple[str, ...]) -> Path | None:
-    root = Path(directory)
-    candidates = []
-    for ext in extensions:
-        candidates.extend(root.glob(f"*{ext}"))
-    candidates = [f for f in candidates if f.is_file()]
-    if not candidates:
-        return None
-    candidates.sort(key=lambda f: f.stat().st_size, reverse=True)
-    return candidates[0]
 
-def validate_output_file(file_path: Path) -> None:
-    if not file_path.exists() or not file_path.is_file():
-        raise RuntimeError("Download output was not created.")
-    size = file_path.stat().st_size
-    if size < 5 * 1024:
-        raise RuntimeError("Downloaded file is too small.")
-    if size > MAX_OUTPUT_SIZE_BYTES:
-        raise RuntimeError("Output file exceeds the configured size limit.")
+# ============================================================
+# YT-DLP OPTIONS CONFIGURATION
+# ============================================================
 
-def base_ydl_options(output_template: str) -> dict:
+def base_ydl_options(output_dir: str) -> dict:
     return {
-        "outtmpl": output_template,
+        "outtmpl": os.path.join(
+            output_dir,
+            "%(title).180s [%(id)s].%(ext)s",
+        ),
         "noplaylist": True,
         "quiet": True,
         "no_warnings": True,
         "ignoreconfig": True,
         "retries": 10,
         "fragment_retries": 10,
+        "extractor_retries": 5,
         "socket_timeout": 30,
+        "concurrent_fragment_downloads": 4,
+        "continuedl": True,
+        "overwrites": True,
+        "restrictfilenames": False,
         "nocheckcertificate": False,
         "http_headers": {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/131.0.0.0 Safari/537.36"
+            ),
             "Accept-Language": "en-US,en;q=0.9",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Sec-Fetch-Mode": "navigate",
         },
     }
 
-def download_video(url: str, directory: str) -> Path:
-    output_template = str(Path(directory) / "snapmega_%(id)s.%(ext)s")
-    candidates = []
 
-    if is_fb_watch_url(url):
-        resolved = resolve_fb_watch_url(url)
-        if resolved and resolved != url:
-            candidates.append(resolved)
-    candidates.append(url)
+def apply_youtube_options(options: dict) -> dict:
+    options["format"] = (
+        "bestvideo[ext=mp4]+bestaudio[ext=m4a]/"
+        "best[ext=mp4]/"
+        "best"
+    )
+    options["merge_output_format"] = "mp4"
 
-    last_error = None
-    for target in candidates:
-        options = base_ydl_options(output_template)
-
-        if is_facebook_url(target):
-            target = target.replace("www.facebook.com", "m.facebook.com").replace("web.facebook.com", "m.facebook.com")
-            options["format"] = "best/bestvideo+bestaudio"
-            options["merge_output_format"] = "mp4"
-            options["http_headers"].update({
-                "Referer": "https://m.facebook.com/",
-                "Origin": "https://m.facebook.com",
-            })
-        elif is_youtube_url(target):
-            # تحويل روابط shorts إلى روابط watch القياسية
-            if "/shorts/" in target:
-                video_id = target.split("/shorts/")[1].split("?")[0].split("/")[0]
-                target = f"https://www.youtube.com/watch?v={video_id}"
-
-            # استخدام عملاء تجاوز كشف الروبوت لمراكز البيانات
-            options["format"] = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
-            options["merge_output_format"] = "mp4"
-            options["extractor_args"] = {
-                "youtube": {
-                    "player_client": ["tv_embedded", "mweb", "android_creator"],
-                    "player_skip": ["webpage", "configs"],
-                }
+    # قراءة ملف الكوكيز تلقائياً في حال وجوده في المستودع
+    cookie_file = Path("cookies.txt")
+    if cookie_file.is_file() and cookie_file.stat().st_size > 0:
+        options["cookiefile"] = str(cookie_file.resolve())
+    else:
+        # إعدادات تخطي فحص الروبوت عند عدم توفر ملف الكوكيز
+        options["extractor_args"] = {
+            "youtube": {
+                "player_client": ["tvhtml5", "ios"],
+                "player_skip": ["configs"],
             }
-        elif "kick.com" in target.lower():
-            options["format"] = "best[height<=480]/bestvideo[height<=480]+bestaudio/best"
-            options["merge_output_format"] = "mp4"
-        else:
-            options["format"] = "bestvideo*+bestaudio/best"
-            options["merge_output_format"] = "mp4"
+        }
 
-        try:
-            with yt_dlp.YoutubeDL(options) as ydl:
-                info = ydl.extract_info(target, download=True)
-                prepared = Path(ydl.prepare_filename(info))
+    return options
 
-            file_path = find_downloaded_file(directory, (".mp4", ".mkv", ".webm", ".mov", ".avi"))
-            if file_path:
-                return file_path
-            if prepared.exists():
-                return prepared
-        except yt_dlp.utils.DownloadError as err:
-            last_error = err
-            continue
 
-    if last_error:
-        raise last_error
-    raise RuntimeError("Could not locate downloaded video.")
+def apply_audio_options(options: dict) -> dict:
+    options["format"] = "bestaudio[ext=m4a]/bestaudio/best"
+    options["postprocessors"] = [{
+        "key": "FFmpegExtractAudio",
+        "preferredcodec": "mp3",
+        "preferredquality": "192",
+    }]
+    return options
 
-def download_audio(url: str, directory: str) -> Path:
-    output_template = str(Path(directory) / "snapmega_%(id)s.%(ext)s")
-    candidates = []
 
-    if is_fb_watch_url(url):
-        resolved = resolve_fb_watch_url(url)
-        if resolved and resolved != url:
-            candidates.append(resolved)
-    candidates.append(url)
+def validate_clip(clip_start: float | None, clip_end: float | None):
+    if clip_start is None:
+        raise HTTPException(status_code=400, detail="clip_start is required.")
+    if clip_end is None:
+        raise HTTPException(status_code=400, detail="clip_end is required.")
+    if clip_start < 0:
+        raise HTTPException(status_code=400, detail="clip_start cannot be negative.")
+    if clip_end <= clip_start:
+        raise HTTPException(status_code=400, detail="clip_end must be greater than clip_start.")
+    if clip_end - clip_start > MAX_CLIP_SECONDS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Clip cannot exceed {MAX_CLIP_SECONDS} seconds.",
+        )
 
-    last_error = None
-    for target in candidates:
-        options = base_ydl_options(output_template)
-        options.update({
-            "format": "bestaudio/best",
-            "postprocessors": [{
-                "key": "FFmpegExtractAudio",
-                "preferredcodec": "mp3",
-                "preferredquality": "192",
-            }],
-        })
 
-        if is_facebook_url(target):
-            target = target.replace("www.facebook.com", "m.facebook.com").replace("web.facebook.com", "m.facebook.com")
-            options["http_headers"].update({
-                "Referer": "https://m.facebook.com/",
-                "Origin": "https://m.facebook.com",
-            })
-        elif is_youtube_url(target):
-            if "/shorts/" in target:
-                video_id = target.split("/shorts/")[1].split("?")[0].split("/")[0]
-                target = f"https://www.youtube.com/watch?v={video_id}"
+# ============================================================
+# FILE HELPERS
+# ============================================================
 
-            options["extractor_args"] = {
-                "youtube": {
-                    "player_client": ["tv_embedded", "mweb", "android_creator"],
-                    "player_skip": ["webpage", "configs"],
-                }
-            }
-
-        try:
-            with yt_dlp.YoutubeDL(options) as ydl:
-                ydl.extract_info(target, download=True)
-
-            file_path = find_downloaded_file(directory, (".mp3", ".m4a", ".aac", ".opus", ".wav"))
-            if file_path:
-                return file_path
-        except yt_dlp.utils.DownloadError as err:
-            last_error = err
-            continue
-
-    if last_error:
-        raise last_error
-    raise RuntimeError("Could not locate downloaded audio.")
-
-def create_clip(url: str, directory: str, start: float, end: float) -> Path:
-    duration = end - start
-    if duration <= 0:
-        raise HTTPException(status_code=400, detail="Clip end time must be greater than start time.")
-    if duration > MAX_CLIP_SECONDS:
-        raise HTTPException(status_code=400, detail=f"Maximum clip duration is {MAX_CLIP_SECONDS // 60} minutes.")
-    if shutil.which("ffmpeg") is None:
-        raise RuntimeError("FFmpeg is not installed.")
-
-    source_file = download_video(url, directory)
-    clip_file = Path(directory) / "snapmega_clip.mp4"
-
-    command = [
-        "ffmpeg", "-y",
-        "-ss", str(start),
-        "-i", str(source_file),
-        "-t", str(duration),
-        "-c", "copy",
-        "-avoid_negative_ts", "make_zero",
-        "-movflags", "+faststart",
-        str(clip_file),
-    ]
+def cleanup_temp_directory(directory: str):
     try:
-        subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180, check=True)
+        if os.path.exists(directory):
+            shutil.rmtree(directory, ignore_errors=True)
     except Exception:
-        fallback = [
-            "ffmpeg", "-y",
-            "-ss", str(start),
-            "-i", str(source_file),
-            "-t", str(duration),
-            "-c:v", "libx264",
-            "-preset", "veryfast",
-            "-crf", "28",
-            "-c:a", "aac",
-            "-b:a", "128k",
-            "-movflags", "+faststart",
-            str(clip_file),
-        ]
-        subprocess.run(fallback, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=300, check=True)
+        pass
 
-    if not clip_file.exists() or clip_file.stat().st_size < 1024:
-        raise RuntimeError("Failed to create clip.")
-    return clip_file
+
+def find_output_file(output_dir: str) -> Path | None:
+    directory = Path(output_dir)
+    if not directory.exists():
+        return None
+
+    files = [
+        p
+        for p in directory.rglob("*")
+        if p.is_file() and p.suffix.lower() not in {".part", ".ytdl", ".temp"}
+    ]
+    if not files:
+        return None
+
+    files.sort(key=lambda path: path.stat().st_mtime, reverse=True)
+    return files[0]
+
+
+def check_output_size(path: Path):
+    if not path.exists():
+        return
+
+    maximum = MAX_OUTPUT_SIZE_MB * 1024 * 1024
+    if path.stat().st_size > maximum:
+        try:
+            path.unlink()
+        except Exception:
+            pass
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                "Output file is too large. "
+                f"Maximum allowed size is {MAX_OUTPUT_SIZE_MB} MB."
+            ),
+        )
+
+
+# ============================================================
+# DOWNLOAD ENGINE
+# ============================================================
+
+async def download_media(
+    url: str,
+    mode: str,
+    clip_start: float | None = None,
+    clip_end: float | None = None,
+):
+    url = normalize_url(url)
+    output_dir = tempfile.mkdtemp(prefix="snapmega_")
+    options = base_ydl_options(output_dir)
+
+    youtube = is_youtube_url(url)
+
+    if youtube:
+        options = apply_youtube_options(options)
+        if mode == "audio":
+            options = apply_audio_options(options)
+
+    elif is_facebook_url(url):
+        url = (
+            url
+            .replace("www.facebook.com", "m.facebook.com")
+            .replace("web.facebook.com", "m.facebook.com")
+        )
+        options["format"] = (
+            "bestvideo*+bestaudio/best"
+            if mode != "audio"
+            else "bestaudio/best"
+        )
+        options["merge_output_format"] = "mp4"
+        options["http_headers"].update({
+            "Referer": "https://m.facebook.com/",
+            "Origin": "https://m.facebook.com",
+        })
+        if mode == "audio":
+            options = apply_audio_options(options)
+
+    elif "kick.com" in url.lower():
+        options["format"] = (
+            "best[height<=480]/"
+            "bestvideo[height<=480]+"
+            "bestaudio/best"
+        )
+        options["merge_output_format"] = "mp4"
+        if mode == "audio":
+            options = apply_audio_options(options)
+
+    else:
+        if mode == "audio":
+            options = apply_audio_options(options)
+        else:
+            options["format"] = (
+                "bestvideo[ext=mp4]+"
+                "bestaudio[ext=m4a]/"
+                "best[ext=mp4]/"
+                "best"
+            )
+            options["merge_output_format"] = "mp4"
+
+    if mode == "clip":
+        validate_clip(clip_start, clip_end)
+        options["download_ranges"] = lambda info_dict, ydl: [{
+            "start_time": clip_start,
+            "end_time": clip_end,
+        }]
+        options["force_keyframes_at_cuts"] = True
+
+    try:
+        def run_download():
+            with yt_dlp.YoutubeDL(options) as ydl:
+                return ydl.extract_info(url, download=True)
+
+        async with download_semaphore:
+            info = await asyncio.wait_for(
+                asyncio.to_thread(run_download),
+                timeout=DOWNLOAD_TIMEOUT,
+            )
+
+    except asyncio.TimeoutError:
+        cleanup_temp_directory(output_dir)
+        raise HTTPException(
+            status_code=504,
+            detail="Download timed out. Please try again.",
+        )
+
+    except HTTPException:
+        cleanup_temp_directory(output_dir)
+        raise
+
+    except Exception as exc:
+        cleanup_temp_directory(output_dir)
+        err = str(exc)
+        err_lower = err.lower()
+
+        if youtube:
+            if "sign in to confirm" in err_lower or "not a bot" in err_lower:
+                detail = (
+                    "YouTube restricted this download on cloud servers. "
+                    "Upload cookies.txt to your repository to unlock full YouTube access."
+                )
+            elif "login required" in err_lower or "private" in err_lower:
+                detail = "This YouTube video requires login or is private."
+            elif "age-restricted" in err_lower:
+                detail = "This YouTube video is age restricted."
+            else:
+                detail = re.sub(
+                    r"ERROR:\s*",
+                    "",
+                    err.splitlines()[0] if err else "YouTube download failed.",
+                )
+
+        elif "cannot parse data" in err_lower:
+            detail = "Facebook layout changed or access was restricted. Please try another video."
+
+        else:
+            detail = re.sub(
+                r"ERROR:\s*",
+                "",
+                err.splitlines()[0] if err else "Download failed.",
+            )
+
+        raise HTTPException(status_code=422, detail=detail)
+
+    output_file = find_output_file(output_dir)
+    if output_file is None:
+        cleanup_temp_directory(output_dir)
+        raise HTTPException(
+            status_code=500,
+            detail="Download completed but output file was not found.",
+        )
+
+    check_output_size(output_file)
+
+    return {
+        "path": str(output_file),
+        "filename": output_file.name,
+        "title": info.get("title") if info else None,
+        "temp_dir": output_dir,
+    }
+
+
+# ============================================================
+# ROUTES
+# ============================================================
 
 @app.get("/")
 async def root():
-    return {"name": "SnapMega API", "version": APP_VERSION, "status": "online"}
+    return {
+        "name": "SnapMega",
+        "version": APP_VERSION,
+        "status": "online",
+        "has_cookies": Path("cookies.txt").exists(),
+    }
+
 
 @app.get("/health")
 async def health():
     return {
         "status": "ok",
+        "app": "SnapMega",
         "version": APP_VERSION,
-        "yt_dlp": getattr(yt_dlp, "__version__", "unknown"),
+        "has_cookies": Path("cookies.txt").exists(),
         "ffmpeg": shutil.which("ffmpeg") is not None,
+        "yt_dlp": getattr(yt_dlp, "__version__", "unknown"),
+        "limits": {
+            "max_clip_seconds": MAX_CLIP_SECONDS,
+            "max_concurrent_downloads": MAX_CONCURRENT_DOWNLOADS,
+            "download_timeout": DOWNLOAD_TIMEOUT,
+            "max_output_size_mb": MAX_OUTPUT_SIZE_MB,
+        },
     }
 
+
 @app.post("/api/download")
-async def api_download(payload: DownloadRequest, request: Request):
-    client_ip = get_client_ip(request)
+async def api_download(
+    request: Request,
+    payload: DownloadRequest,
+    background_tasks: BackgroundTasks,
+):
+    url = payload.url.strip()
+
+    if not url:
+        raise HTTPException(status_code=400, detail="URL is required.")
+
+    if len(url) > MAX_URL_LENGTH:
+        raise HTTPException(status_code=400, detail="URL is too long.")
+
+    if not is_allowed_url(url):
+        raise HTTPException(status_code=400, detail="This URL is not supported.")
+
+    client_ip = (
+        request.headers.get("CF-Connecting-IP")
+        or request.headers.get("X-Forwarded-For")
+        or (request.client.host if request.client else "unknown")
+    )
+
+    if "," in client_ip:
+        client_ip = client_ip.split(",")[0].strip()
+
     check_rate_limit(client_ip)
-    url = validate_url(payload.url)
 
-    if shutil.which("ffmpeg") is None:
-        raise HTTPException(status_code=503, detail="FFmpeg is not installed.")
+    result = await download_media(
+        url=url,
+        mode=payload.mode,
+        clip_start=payload.clip_start,
+        clip_end=payload.clip_end,
+    )
 
-    start, end = None, None
-    if payload.mode == "clip":
-        start = parse_time(payload.clip_start) or 0.0
-        end = parse_time(payload.clip_end) or 120.0
-        if end <= start:
-            raise HTTPException(status_code=400, detail="Invalid clip duration.")
+    file_path = Path(result["path"])
 
-    acquired = False
-    temp_dir = None
+    # حذف المجلد المؤقت تلقائياً بعد اكتمال إرسال الملف
+    background_tasks.add_task(
+        cleanup_temp_directory,
+        result["temp_dir"],
+    )
 
-    try:
-        await asyncio.wait_for(download_semaphore.acquire(), timeout=10)
-        acquired = True
-        temp_dir = tempfile.mkdtemp(prefix="snapmega_")
+    media_type = (
+        "audio/mpeg"
+        if payload.mode == "audio"
+        else "video/mp4"
+    )
 
-        if payload.mode == "video":
-            file_path = await asyncio.wait_for(asyncio.to_thread(download_video, url, temp_dir), timeout=DOWNLOAD_TIMEOUT)
-        elif payload.mode == "audio":
-            file_path = await asyncio.wait_for(asyncio.to_thread(download_audio, url, temp_dir), timeout=DOWNLOAD_TIMEOUT)
-        else:
-            file_path = await asyncio.wait_for(asyncio.to_thread(create_clip, url, temp_dir, start, end), timeout=DOWNLOAD_TIMEOUT)
+    return FileResponse(
+        path=str(file_path),
+        media_type=media_type,
+        filename=result["filename"],
+        background=background_tasks,
+        headers={
+            "Cache-Control": "no-store",
+            "X-SnapMega-Version": APP_VERSION,
+        },
+    )
 
-        validate_output_file(file_path)
 
-        filename = f"snapmega-{'audio.mp3' if payload.mode == 'audio' else ('clip.mp4' if payload.mode == 'clip' else 'video.mp4')}"
-        media_type = "audio/mpeg" if payload.mode == "audio" else "video/mp4"
-
-        return FileResponse(
-            path=str(file_path),
-            media_type=media_type,
-            filename=filename,
-            headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},
-            background=BackgroundTask(cleanup_dir, temp_dir),
-        )
-
-    except asyncio.TimeoutError:
-        cleanup_dir(temp_dir)
-        raise HTTPException(status_code=504, detail="The download took too long.")
-    except yt_dlp.utils.DownloadError as err:
-        cleanup_dir(temp_dir)
-        err_lower = str(err).lower()
-        if "sign in to confirm you're not a bot" in err_lower:
-            detail = "YouTube restricted this download on cloud servers. Try another video link or format."
-        elif "private" in err_lower or "login" in err_lower:
-            detail = "This video is private or requires login."
-        elif "cannot parse data" in err_lower:
-            detail = "Facebook data layout changed or restricted. Please try another video."
-        else:
-            detail = re.sub(r"ERROR:\s*", "", str(err).splitlines()[0] if str(err) else "Download failed.")
-        raise HTTPException(status_code=422, detail=detail)
-    except Exception as exc:
-        cleanup_dir(temp_dir)
-        raise HTTPException(status_code=500, detail=str(exc) or "Download failed.")
-    finally:
-        if acquired:
-            download_semaphore.release()
-
-@app.exception_handler(HTTPException)
-async def http_exception_handler(request: Request, exc: HTTPException):
-    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail}, headers=exc.headers or {})
-
-@app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
-    return JSONResponse(status_code=500, content={"detail": "Internal server error."})
+# ============================================================
+# START SERVER
+# ============================================================
 
 if __name__ == "__main__":
     import uvicorn
+
     port = int(os.getenv("PORT", "10000"))
-    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=port,
+        reload=False,
+    )
