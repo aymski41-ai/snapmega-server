@@ -23,7 +23,7 @@ from starlette.background import BackgroundTask
 # SNAPMEGA GLOBAL PRODUCTION API
 # =========================================================
 
-APP_VERSION = "4.6.0"
+APP_VERSION = "4.7.0"
 
 app = FastAPI(
     title="SnapMega API",
@@ -31,84 +31,28 @@ app = FastAPI(
     description="Ultra-fast video downloader and stream clipper API",
 )
 
-
 # =========================================================
 # CONFIGURATION
 # =========================================================
 
-FRONTEND_ORIGINS_RAW = os.getenv(
-    "FRONTEND_ORIGINS",
-    "https://snapmega.pages.dev",
-)
+ALLOWED_ORIGINS = ["*"]
 
-ALLOWED_ORIGINS = [
-    origin.strip().rstrip("/")
-    for origin in FRONTEND_ORIGINS_RAW.split(",")
-    if origin.strip()
-]
-
-if "https://snapmega.pages.dev" not in ALLOWED_ORIGINS:
-    ALLOWED_ORIGINS.append("https://snapmega.pages.dev")
-
-
-def env_int(
-    name: str,
-    default: int,
-    minimum: int,
-    maximum: int,
-) -> int:
+def env_int(name: str, default: int, minimum: int, maximum: int) -> int:
     raw = os.getenv(name, str(default)).strip()
-
     try:
         value = int(raw)
     except (TypeError, ValueError):
         return default
-
     return max(minimum, min(value, maximum))
-
 
 MAX_CLIP_SECONDS = 120 * 60
 MAX_URL_LENGTH = 4096
-
-MAX_CONCURRENT_DOWNLOADS = env_int(
-    "MAX_CONCURRENT_DOWNLOADS",
-    2,
-    1,
-    10,
-)
-
-DOWNLOAD_TIMEOUT = env_int(
-    "DOWNLOAD_TIMEOUT",
-    900,
-    30,
-    3600,
-)
-
-RATE_LIMIT_REQUESTS = env_int(
-    "RATE_LIMIT_REQUESTS",
-    20,
-    1,
-    1000,
-)
-
-RATE_LIMIT_WINDOW = env_int(
-    "RATE_LIMIT_WINDOW",
-    60,
-    10,
-    3600,
-)
-
-MAX_OUTPUT_SIZE_MB = env_int(
-    "MAX_OUTPUT_SIZE_MB",
-    500,
-    10,
-    2048,
-)
-
-MAX_OUTPUT_SIZE_BYTES = (
-    MAX_OUTPUT_SIZE_MB * 1024 * 1024
-)
-
+MAX_CONCURRENT_DOWNLOADS = env_int("MAX_CONCURRENT_DOWNLOADS", 3, 1, 10)
+DOWNLOAD_TIMEOUT = env_int("DOWNLOAD_TIMEOUT", 900, 30, 3600)
+RATE_LIMIT_REQUESTS = env_int("RATE_LIMIT_REQUESTS", 60, 1, 1000)
+RATE_LIMIT_WINDOW = env_int("RATE_LIMIT_WINDOW", 60, 10, 3600)
+MAX_OUTPUT_SIZE_MB = env_int("MAX_OUTPUT_SIZE_MB", 500, 10, 2048)
+MAX_OUTPUT_SIZE_BYTES = MAX_OUTPUT_SIZE_MB * 1024 * 1024
 
 # =========================================================
 # SUPPORTED DOMAINS
@@ -127,18 +71,12 @@ ALLOWED_ROOT_DOMAINS = {
     "kick.com",
 }
 
-
 def is_allowed_host(hostname: str) -> bool:
     hostname = hostname.lower().rstrip(".")
-
     for domain in ALLOWED_ROOT_DOMAINS:
-        if hostname == domain:
+        if hostname == domain or hostname.endswith("." + domain):
             return True
-        if hostname.endswith("." + domain):
-            return True
-
     return False
-
 
 # =========================================================
 # CORS
@@ -150,101 +88,56 @@ app.add_middleware(
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["Content-Disposition"],
+    expose_headers=["Content-Disposition", "Content-Type", "Content-Length"],
     max_age=86400,
 )
-
 
 # =========================================================
 # RATE LIMITING
 # =========================================================
 
 rate_limit_store = defaultdict(deque)
-
-download_semaphore = asyncio.Semaphore(
-    MAX_CONCURRENT_DOWNLOADS
-)
-
+download_semaphore = asyncio.Semaphore(MAX_CONCURRENT_DOWNLOADS)
 
 def get_client_ip(request: Request) -> str:
     if request.client:
         return request.client.host
-
     return "unknown"
-
 
 def cleanup_rate_limit_store(now: float) -> None:
     expired_ips = []
-
     for ip, requests in rate_limit_store.items():
-        while requests and (
-            now - requests[0] > RATE_LIMIT_WINDOW
-        ):
+        while requests and (now - requests[0] > RATE_LIMIT_WINDOW):
             requests.popleft()
-
         if not requests:
             expired_ips.append(ip)
-
     for ip in expired_ips:
         rate_limit_store.pop(ip, None)
 
-
 def check_rate_limit(ip: str) -> None:
     now = time.monotonic()
-
     if len(rate_limit_store) > 1000:
         cleanup_rate_limit_store(now)
-
     requests = rate_limit_store[ip]
-
-    while requests and (
-        now - requests[0] > RATE_LIMIT_WINDOW
-    ):
+    while requests and (now - requests[0] > RATE_LIMIT_WINDOW):
         requests.popleft()
-
     if len(requests) >= RATE_LIMIT_REQUESTS:
         raise HTTPException(
             status_code=429,
-            detail=(
-                "Too many requests. "
-                "Please try again later."
-            ),
-            headers={
-                "Retry-After": str(
-                    RATE_LIMIT_WINDOW
-                )
-            },
+            detail="Too many requests. Please try again later.",
+            headers={"Retry-After": str(RATE_LIMIT_WINDOW)},
         )
-
     requests.append(now)
-
 
 # =========================================================
 # REQUEST MODEL
 # =========================================================
 
 class DownloadRequest(BaseModel):
-    url: str = Field(
-        ...,
-        min_length=4,
-        max_length=MAX_URL_LENGTH,
-    )
-
-    mode: str = Field(
-        default="video",
-        pattern=r"^(video|audio|clip)$",
-    )
-
-    clip_start: str | None = Field(
-        default=None,
-        max_length=12,
-    )
-
-    clip_end: str | None = Field(
-        default=None,
-        max_length=12,
-    )
-
+    url: str = Field(..., min_length=4, max_length=MAX_URL_LENGTH)
+    mode: str = Field(default="video", pattern=r"^(video|audio|clip)$")
+    clip_start: str | None = Field(default=None, max_length=12)
+    clip_end: str | None = Field(default=None, max_length=12)
 
 # =========================================================
 # URL HELPERS
@@ -252,138 +145,65 @@ class DownloadRequest(BaseModel):
 
 def clean_target_url(url: str) -> str:
     url = url.strip()
-
     if url.startswith("tps://"):
         url = "h" + url
-
     elif url.startswith("ps://"):
         url = "htt" + url
-
     elif url.startswith("//"):
         url = "https:" + url
-
-    elif not re.match(
-        r"^https?://",
-        url,
-        re.I,
-    ):
+    elif not re.match(r"^https?://", url, re.I):
         url = "https://" + url
-
     return url
-
 
 def validate_url(url: str) -> str:
     url = clean_target_url(url)
-
     parsed = urlparse(url)
 
-    if parsed.scheme not in {
-        "http",
-        "https",
-    }:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid URL scheme.",
-        )
-
+    if parsed.scheme not in {"http", "https"}:
+        raise HTTPException(status_code=400, detail="Invalid URL scheme.")
     if not parsed.hostname:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid URL.",
-        )
+        raise HTTPException(status_code=400, detail="Invalid URL.")
 
-    hostname = (
-        parsed.hostname
-        .lower()
-        .rstrip(".")
-    )
-
+    hostname = parsed.hostname.lower().rstrip(".")
     if parsed.username or parsed.password:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid URL.",
-        )
-
+        raise HTTPException(status_code=400, detail="Invalid URL.")
     if not is_allowed_host(hostname):
-        raise HTTPException(
-            status_code=400,
-            detail="This platform is not supported.",
-        )
+        raise HTTPException(status_code=400, detail="This platform is not supported.")
 
     return url
-
 
 # =========================================================
 # TIME PARSER
 # =========================================================
 
-def parse_time(
-    value: str | None,
-) -> float | None:
+def parse_time(value: str | None) -> float | None:
     if value is None:
         return None
-
     value = value.strip()
-
     if not value:
         return None
 
-    if re.fullmatch(
-        r"\d+(\.\d+)?",
-        value,
-    ):
+    if re.fullmatch(r"\d+(\.\d+)?", value):
         return float(value)
 
-    match = re.fullmatch(
-        r"(\d{1,3}):(\d{1,2})",
-        value,
-    )
-
+    match = re.fullmatch(r"(\d{1,3}):(\d{1,2})", value)
     if match:
         minutes = int(match.group(1))
         seconds = int(match.group(2))
-
         if seconds >= 60:
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid time format.",
-            )
+            raise HTTPException(status_code=400, detail="Invalid time format.")
+        return minutes * 60 + seconds
 
-        return (
-            minutes * 60
-            + seconds
-        )
-
-    match = re.fullmatch(
-        r"(\d{1,2}):(\d{1,2}):(\d{1,2})",
-        value,
-    )
-
+    match = re.fullmatch(r"(\d{1,2}):(\d{1,2}):(\d{1,2})", value)
     if match:
         hours = int(match.group(1))
         minutes = int(match.group(2))
         seconds = int(match.group(3))
+        if minutes >= 60 or seconds >= 60:
+            raise HTTPException(status_code=400, detail="Invalid time format.")
+        return hours * 3600 + minutes * 60 + seconds
 
-        if (
-            minutes >= 60
-            or seconds >= 60
-        ):
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid time format.",
-            )
-
-        return (
-            hours * 3600
-            + minutes * 60
-            + seconds
-        )
-
-    raise HTTPException(
-        status_code=400,
-        detail="Invalid time format.",
-    )
-
+    raise HTTPException(status_code=400, detail="Invalid time format.")
 
 # =========================================================
 # FILE HELPERS
@@ -391,135 +211,68 @@ def parse_time(
 
 def cleanup_dir(directory: str) -> None:
     try:
-        shutil.rmtree(
-            directory,
-            ignore_errors=True,
-        )
+        shutil.rmtree(directory, ignore_errors=True)
     except Exception:
         pass
 
-
-def find_downloaded_file(
-    directory: str,
-    extensions: tuple[str, ...],
-) -> Path | None:
+def find_downloaded_file(directory: str, extensions: tuple[str, ...]) -> Path | None:
     root = Path(directory)
     candidates = []
-
     for extension in extensions:
-        candidates.extend(
-            root.glob(f"*{extension}")
-        )
-
-    candidates = [
-        file
-        for file in candidates
-        if file.is_file()
-    ]
-
+        candidates.extend(root.glob(f"*{extension}"))
+    candidates = [file for file in candidates if file.is_file()]
     if not candidates:
         return None
-
-    candidates.sort(
-        key=lambda file: file.stat().st_size,
-        reverse=True,
-    )
-
+    candidates.sort(key=lambda file: file.stat().st_size, reverse=True)
     return candidates[0]
 
-
-def validate_output_file(
-    file_path: Path,
-) -> None:
+def validate_output_file(file_path: Path) -> None:
     if not file_path.exists():
-        raise RuntimeError(
-            "Download output was not created."
-        )
-
+        raise RuntimeError("Download output was not created.")
     if not file_path.is_file():
-        raise RuntimeError(
-            "Invalid download output."
-        )
-
+        raise RuntimeError("Invalid download output.")
     size = file_path.stat().st_size
-
     if size < 5 * 1024:
-        raise RuntimeError(
-            "Downloaded file is too small."
-        )
-
+        raise RuntimeError("Downloaded file is too small or corrupted.")
     if size > MAX_OUTPUT_SIZE_BYTES:
-        raise RuntimeError(
-            "Output file exceeds the configured size limit."
-        )
-
+        raise RuntimeError("Output file exceeds the configured size limit.")
 
 # =========================================================
 # YT-DLP OPTIONS
 # =========================================================
 
-def base_ydl_options(
-    output_template: str,
-) -> dict:
+def base_ydl_options(output_template: str) -> dict:
     return {
         "outtmpl": output_template,
         "noplaylist": True,
         "quiet": True,
         "no_warnings": True,
         "ignoreconfig": True,
-        "retries": 5,
-        "fragment_retries": 5,
-        "socket_timeout": 30,
-        "concurrent_fragment_downloads": 2,
-        "nocheckcertificate": False,
-        "live_from_start": False,
-        "hls_prefer_native": True,
-        "extractor_args": {
-            "kick": {
-                "include_offline": True,
-            },
-            "youtube": {
-                "player_client": ["tvhtml5", "android", "ios"]
-            }
-        },
+        "retries": 10,
+        "fragment_retries": 10,
+        "socket_timeout": 45,
+        "nocheckcertificate": True,
+        "geo_bypass": True,
         "http_headers": {
-            "User-Agent": (
-                "Mozilla/5.0 "
-                "(Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 "
-                "(KHTML, like Gecko) "
-                "Chrome/131.0.0.0 "
-                "Safari/537.36"
-            ),
-            "Accept-Language": (
-                "en-US,en;q=0.9"
-            ),
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Sec-Fetch-Mode": "navigate",
         },
     }
-
 
 # =========================================================
 # VIDEO
 # =========================================================
 
-def download_video(
-    url: str,
-    directory: str,
-) -> Path:
-    output_template = str(
-        Path(directory)
-        / "snapmega_%(id)s.%(ext)s"
-    )
+def download_video(url: str, directory: str) -> Path:
+    output_template = str(Path(directory) / "snapmega_%(id)s.%(ext)s")
+    options = base_ydl_options(output_template)
 
-    options = base_ydl_options(
-        output_template
-    )
-
-    # إذا كان الرابط من كيك، اختر جودة 360p تلقائياً لتسريع التحميل
     if "kick.com" in url.lower():
-        format_selection = "best[height<=360]/bestvideo[height<=360]+bestaudio/best"
+        format_selection = "best[height<=480]/bestvideo[height<=480]+bestaudio/best"
     else:
-        format_selection = "best[ext=mp4]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best"
+        format_selection = "best[ext=mp4]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best"
 
     options.update({
         "format": format_selection,
@@ -527,54 +280,27 @@ def download_video(
     })
 
     with yt_dlp.YoutubeDL(options) as ydl:
-        info = ydl.extract_info(
-            url,
-            download=True,
-        )
-
-        prepared = Path(
-            ydl.prepare_filename(info)
-        )
+        info = ydl.extract_info(url, download=True)
+        prepared = Path(ydl.prepare_filename(info))
 
     file_path = find_downloaded_file(
         directory,
-        (
-            ".mp4",
-            ".mkv",
-            ".webm",
-            ".mov",
-            ".avi",
-        ),
+        (".mp4", ".mkv", ".webm", ".mov", ".avi"),
     )
-
     if file_path:
         return file_path
-
     if prepared.exists():
         return prepared
 
-    raise RuntimeError(
-        "Could not locate downloaded video."
-    )
-
+    raise RuntimeError("Could not locate downloaded video.")
 
 # =========================================================
 # AUDIO
 # =========================================================
 
-def download_audio(
-    url: str,
-    directory: str,
-) -> Path:
-    output_template = str(
-        Path(directory)
-        / "snapmega_%(id)s.%(ext)s"
-    )
-
-    options = base_ydl_options(
-        output_template
-    )
-
+def download_audio(url: str, directory: str) -> Path:
+    output_template = str(Path(directory) / "snapmega_%(id)s.%(ext)s")
+    options = base_ydl_options(output_template)
     options.update({
         "format": "bestaudio/best",
         "postprocessors": [
@@ -587,40 +313,21 @@ def download_audio(
     })
 
     with yt_dlp.YoutubeDL(options) as ydl:
-        ydl.extract_info(
-            url,
-            download=True,
-        )
+        ydl.extract_info(url, download=True)
 
     file_path = find_downloaded_file(
         directory,
-        (
-            ".mp3",
-            ".m4a",
-            ".aac",
-            ".opus",
-            ".wav",
-        ),
+        (".mp3", ".m4a", ".aac", ".opus", ".wav"),
     )
-
     if not file_path:
-        raise RuntimeError(
-            "Could not locate downloaded audio."
-        )
-
+        raise RuntimeError("Could not locate downloaded audio.")
     return file_path
 
-
 # =========================================================
-# FAST STREAM CLIPPER (القص فائق السرعة بجودة 360p تلقائياً)
+# FAST STREAM CLIPPER
 # =========================================================
 
-def create_clip(
-    url: str,
-    directory: str,
-    start: float,
-    end: float,
-) -> Path:
+def create_clip(url: str, directory: str, start: float, end: float) -> Path:
     if shutil.which("ffmpeg") is None:
         raise RuntimeError("FFmpeg is not installed.")
 
@@ -632,19 +339,11 @@ def create_clip(
         )
 
     clip_file = Path(directory) / "snapmega_clip.mp4"
-
-    # جلب رابط الدفق المباشر بجودة 360p تلقائياً لسرعة فائقة وخفة تامة
     ydl_opts = {
         "format": "best[height<=360]/best[height<=480]/best",
         "skip_download": True,
         "quiet": True,
         "no_warnings": True,
-        "live_from_start": False,
-        "extractor_args": {
-            "kick": {
-                "include_offline": True,
-            }
-        }
     }
 
     stream_url = None
@@ -652,12 +351,10 @@ def create_clip(
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             stream_url = info.get("url")
-
             if not stream_url and "formats" in info:
                 formats = [f["url"] for f in info["formats"] if f.get("url")]
                 if formats:
-                    stream_url = formats[0]  # اختيار أخف صيغة مباشرة
-
+                    stream_url = formats[0]
     except Exception:
         pass
 
@@ -665,13 +362,8 @@ def create_clip(
         source_file = download_video(url, directory)
         stream_url = str(source_file)
 
-    # أمر ffmpeg بالقفز السريع المباشر (-ss قبل -i) والنسخ دون إعادة معالجة
     command = [
-        "ffmpeg",
-        "-y",
-        "-reconnect", "1",
-        "-reconnect_streamed", "1",
-        "-reconnect_delay_max", "2",
+        "ffmpeg", "-y",
         "-ss", str(start),
         "-i", str(stream_url),
         "-t", str(duration),
@@ -683,18 +375,10 @@ def create_clip(
     ]
 
     try:
-        subprocess.run(
-            command,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            timeout=180,
-            check=True,
-        )
+        subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180, check=True)
     except Exception:
-        # إذا تعذر النسخ المباشر، تحويل سريع جداً بترميز خفيف ultrafast
         fallback_cmd = [
-            "ffmpeg",
-            "-y",
+            "ffmpeg", "-y",
             "-ss", str(start),
             "-i", str(stream_url),
             "-t", str(duration),
@@ -707,237 +391,85 @@ def create_clip(
             "-b:a", "96k",
             str(clip_file),
         ]
-        subprocess.run(
-            fallback_cmd,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            timeout=180,
-            check=True,
-        )
+        subprocess.run(fallback_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180, check=True)
 
     if not clip_file.exists() or clip_file.stat().st_size < 1024:
         raise RuntimeError("Failed to extract clip.")
 
     return clip_file
 
-
 # =========================================================
-# HEALTH
+# ROUTES
 # =========================================================
 
 @app.get("/")
 async def root():
-    return {
-        "name": "SnapMega API",
-        "version": APP_VERSION,
-        "status": "online",
-    }
-
+    return {"name": "SnapMega API", "version": APP_VERSION, "status": "online"}
 
 @app.get("/health")
 async def health():
     return {
         "status": "ok",
         "version": APP_VERSION,
-        "yt_dlp": hasattr(
-            yt_dlp,
-            "YoutubeDL",
-        ),
-        "ffmpeg": (
-            shutil.which("ffmpeg")
-            is not None
-        ),
-        "ffprobe": (
-            shutil.which("ffprobe")
-            is not None
-        ),
-        "max_concurrent_downloads": (
-            MAX_CONCURRENT_DOWNLOADS
-        ),
-        "max_output_mb": (
-            MAX_OUTPUT_SIZE_MB
-        ),
-        "rate_limit_requests": (
-            RATE_LIMIT_REQUESTS
-        ),
-        "rate_limit_window": (
-            RATE_LIMIT_WINDOW
-        ),
+        "yt_dlp": hasattr(yt_dlp, "YoutubeDL"),
+        "ffmpeg": shutil.which("ffmpeg") is not None,
         "allowed_origins": ALLOWED_ORIGINS,
     }
 
-
-# =========================================================
-# DOWNLOAD API
-# =========================================================
-
 @app.post("/api/download")
-async def api_download(
-    payload: DownloadRequest,
-    request: Request,
-):
+async def api_download(payload: DownloadRequest, request: Request):
     client_ip = get_client_ip(request)
-
     check_rate_limit(client_ip)
-
-    url = validate_url(
-        payload.url
-    )
+    url = validate_url(payload.url)
 
     if shutil.which("ffmpeg") is None:
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                "Download service is "
-                "temporarily unavailable."
-            ),
-        )
+        raise HTTPException(status_code=503, detail="FFmpeg is not installed on the server.")
 
-    start = None
-    end = None
-
+    start, end = None, None
     if payload.mode == "clip":
-        start = parse_time(
-            payload.clip_start
-        )
-
-        end = parse_time(
-            payload.clip_end
-        )
-
-        if (
-            start is None
-            or end is None
-        ):
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    "Clip start and end "
-                    "times are required."
-                ),
-            )
-
-        if start < 0 or end < 0:
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid clip time.",
-            )
-
-        if end <= start:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    "Clip end must be "
-                    "greater than start."
-                ),
-            )
-
-        if (
-            end - start
-            > MAX_CLIP_SECONDS
-        ):
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"Maximum clip duration is {MAX_CLIP_SECONDS // 60} minutes."
-                ),
-            )
+        start = parse_time(payload.clip_start)
+        end = parse_time(payload.clip_end)
+        if start is None or end is None:
+            raise HTTPException(status_code=400, detail="Clip start and end times are required.")
+        if start < 0 or end < 0 or end <= start:
+            raise HTTPException(status_code=400, detail="Invalid clip duration.")
+        if end - start > MAX_CLIP_SECONDS:
+            raise HTTPException(status_code=400, detail=f"Maximum clip duration is {MAX_CLIP_SECONDS // 60} minutes.")
 
     acquired = False
     temp_dir = None
 
     try:
         try:
-            await asyncio.wait_for(
-                download_semaphore.acquire(),
-                timeout=10,
-            )
-
+            await asyncio.wait_for(download_semaphore.acquire(), timeout=10)
             acquired = True
-
         except asyncio.TimeoutError:
-            raise HTTPException(
-                status_code=503,
-                detail=(
-                    "The download servers "
-                    "are busy. Please try "
-                    "again in a moment."
-                ),
-                headers={
-                    "Retry-After": "10"
-                },
-            )
+            raise HTTPException(status_code=503, detail="The download servers are busy. Please try again in a moment.")
 
-        temp_dir = tempfile.mkdtemp(
-            prefix="snapmega_"
-        )
+        temp_dir = tempfile.mkdtemp(prefix="snapmega_")
 
         try:
             if payload.mode == "video":
-                file_path = (
-                    await asyncio.wait_for(
-                        asyncio.to_thread(
-                            download_video,
-                            url,
-                            temp_dir,
-                        ),
-                        timeout=DOWNLOAD_TIMEOUT,
-                    )
+                file_path = await asyncio.wait_for(
+                    asyncio.to_thread(download_video, url, temp_dir),
+                    timeout=DOWNLOAD_TIMEOUT,
                 )
-
             elif payload.mode == "audio":
-                file_path = (
-                    await asyncio.wait_for(
-                        asyncio.to_thread(
-                            download_audio,
-                            url,
-                            temp_dir,
-                        ),
-                        timeout=DOWNLOAD_TIMEOUT,
-                    )
+                file_path = await asyncio.wait_for(
+                    asyncio.to_thread(download_audio, url, temp_dir),
+                    timeout=DOWNLOAD_TIMEOUT,
                 )
-
             else:
-                file_path = (
-                    await asyncio.wait_for(
-                        asyncio.to_thread(
-                            create_clip,
-                            url,
-                            temp_dir,
-                            start,
-                            end,
-                        ),
-                        timeout=DOWNLOAD_TIMEOUT,
-                    )
+                file_path = await asyncio.wait_for(
+                    asyncio.to_thread(create_clip, url, temp_dir, start, end),
+                    timeout=DOWNLOAD_TIMEOUT,
                 )
 
-            validate_output_file(
-                file_path
-            )
+            validate_output_file(file_path)
 
-            if payload.mode == "audio":
-                filename = (
-                    "snapmega-audio.mp3"
-                )
-                media_type = (
-                    "audio/mpeg"
-                )
-
-            elif payload.mode == "clip":
-                filename = (
-                    "snapmega-clip.mp4"
-                )
-                media_type = (
-                    "video/mp4"
-                )
-
-            else:
-                filename = (
-                    "snapmega-video.mp4"
-                )
-                media_type = (
-                    "video/mp4"
-                )
+            ext = ".mp3" if payload.mode == "audio" else ".mp4"
+            media_type = "audio/mpeg" if payload.mode == "audio" else "video/mp4"
+            filename = f"snapmega_{int(time.time())}{ext}"
 
             return FileResponse(
                 path=str(file_path),
@@ -945,26 +477,14 @@ async def api_download(
                 filename=filename,
                 headers={
                     "Cache-Control": "no-store",
-                    "X-Content-Type-Options": (
-                        "nosniff"
-                    ),
+                    "X-Content-Type-Options": "nosniff",
                 },
-                background=BackgroundTask(
-                    cleanup_dir,
-                    temp_dir,
-                ),
+                background=BackgroundTask(cleanup_dir, temp_dir),
             )
 
         except asyncio.TimeoutError:
             cleanup_dir(temp_dir)
-
-            raise HTTPException(
-                status_code=504,
-                detail=(
-                    "The download took too long. "
-                    "Please try another video."
-                ),
-            )
+            raise HTTPException(status_code=504, detail="The download took too long.")
 
         except HTTPException:
             cleanup_dir(temp_dir)
@@ -972,82 +492,28 @@ async def api_download(
 
         except yt_dlp.utils.DownloadError as err:
             cleanup_dir(temp_dir)
-
-            err_str = str(err)
-            raise HTTPException(
-                status_code=422,
-                detail=(
-                    err_str
-                    if "offline" in err_str.lower()
-                    else "This video could not be downloaded. It may be private, unavailable, restricted, or unsupported."
-                ),
-            )
+            clean_err = str(err).splitlines()[0] if str(err) else "Media download failed"
+            # تنظيف رسائل yt-dlp لإعطاء رسالة واضحة للمستخدم
+            clean_err = re.sub(r"ERROR:\s*", "", clean_err)
+            raise HTTPException(status_code=422, detail=clean_err)
 
         except Exception as e:
             cleanup_dir(temp_dir)
-
-            raise HTTPException(
-                status_code=500,
-                detail=str(e) or "Download failed. Please try again later.",
-            )
+            raise HTTPException(status_code=500, detail=str(e) or "Download failed.")
 
     finally:
         if acquired:
             download_semaphore.release()
 
-
-# =========================================================
-# HTTP ERROR HANDLER
-# =========================================================
-
 @app.exception_handler(HTTPException)
-async def http_exception_handler(
-    request: Request,
-    exc: HTTPException,
-):
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={
-            "detail": exc.detail
-        },
-        headers=exc.headers or {},
-    )
-
-
-# =========================================================
-# GLOBAL UNEXPECTED ERROR HANDLER
-# =========================================================
+async def http_exception_handler(request: Request, exc: HTTPException):
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail}, headers=exc.headers or {})
 
 @app.exception_handler(Exception)
-async def global_exception_handler(
-    request: Request,
-    exc: Exception,
-):
-    return JSONResponse(
-        status_code=500,
-        content={
-            "detail": "Internal server error."
-        },
-    )
-
-
-# =========================================================
-# LOCAL DEVELOPMENT
-# =========================================================
+async def global_exception_handler(request: Request, exc: Exception):
+    return JSONResponse(status_code=500, content={"detail": "Internal server error."})
 
 if __name__ == "__main__":
     import uvicorn
-
-    port = int(
-        os.getenv(
-            "PORT",
-            "10000",
-        )
-    )
-
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=port,
-        reload=False,
-    )
+    port = int(os.getenv("PORT", "10000"))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
