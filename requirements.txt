@@ -1,6 +1,6 @@
 fastapi>=0.115,<1
 uvicorn[standard]>=0.30,<1
 pydantic>=2.8,<3
-yt-dlp>=2025.1,<2027
+yt-dlp
 curl-cffi>=0.13,<1
 requests>=2.32,<3
