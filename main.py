@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
 
 
-APP_VERSION = "5.7.0"
+APP_VERSION = "5.8.0"
 
 app = FastAPI(
     title="SnapMega API",
@@ -102,8 +102,7 @@ def check_rate_limit(ip: str) -> None:
             detail="Too many requests. Please try again later.",
             headers={"Retry-After": str(RATE_LIMIT_WINDOW)},
         )
-    requests_list = rate_limit_store[ip]
-    requests_list.append(now)
+    reqs.append(now)
 
 class DownloadRequest(BaseModel):
     url: str = Field(..., min_length=4, max_length=MAX_URL_LENGTH)
@@ -160,6 +159,8 @@ def resolve_fb_watch_url(url: str) -> str | None:
         session = curl_requests.Session(impersonate="chrome120")
         resp = session.get(url, allow_redirects=True, timeout=12)
         final_url = str(resp.url)
+        
+        # إذا حوّل إلى رابط تسجيل دخول، نستخرج المعرف ونبنيه برابط عام
         if "login" in final_url or "checkpoint" in final_url or "next=" in final_url:
             m = re.search(r"v%3D(\d+)", final_url) or re.search(r"videos%2F(\d+)", final_url)
             if m:
@@ -220,10 +221,12 @@ def base_ydl_options(output_template: str) -> dict:
         "fragment_retries": 10,
         "socket_timeout": 30,
         "nocheckcertificate": False,
+        "impersonate": "chrome",  # ميزة حيوية لفك حظر فيسبوك وتجاوز cannot parse data
         "http_headers": {
-            "User-Agent": "Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36 [FB_IAB/FB4A;FBAV/480.0.0.45.109;]",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
             "Accept-Language": "en-US,en;q=0.9",
-            "Accept": "*/*",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Sec-Fetch-Mode": "navigate",
         },
     }
 
@@ -240,12 +243,15 @@ def download_video(url: str, directory: str) -> Path:
     last_error = None
     for target in candidates:
         options = base_ydl_options(output_template)
+
         if is_facebook_url(target):
+            # تحويل إلى m.facebook.com لتسهيل قراءة البيانات بدون سكربتات ثقيلة
+            target = target.replace("www.facebook.com", "m.facebook.com").replace("web.facebook.com", "m.facebook.com")
             options["format"] = "best/bestvideo+bestaudio"
             options["merge_output_format"] = "mp4"
             options["http_headers"].update({
-                "Referer": "https://www.facebook.com/",
-                "Origin": "https://www.facebook.com",
+                "Referer": "https://m.facebook.com/",
+                "Origin": "https://m.facebook.com",
             })
         elif "kick.com" in target.lower():
             options["format"] = "best[height<=480]/bestvideo[height<=480]+bestaudio/best"
@@ -294,9 +300,10 @@ def download_audio(url: str, directory: str) -> Path:
             }],
         })
         if is_facebook_url(target):
+            target = target.replace("www.facebook.com", "m.facebook.com").replace("web.facebook.com", "m.facebook.com")
             options["http_headers"].update({
-                "Referer": "https://www.facebook.com/",
-                "Origin": "https://www.facebook.com",
+                "Referer": "https://m.facebook.com/",
+                "Origin": "https://m.facebook.com",
             })
 
         try:
@@ -423,8 +430,8 @@ async def api_download(payload: DownloadRequest, request: Request):
         err_lower = str(err).lower()
         if "private" in err_lower or "login" in err_lower:
             detail = "This video is private or requires login."
-        elif "redirect loop" in err_lower or "302" in err_lower:
-            detail = "Unable to follow video redirect. Please try another video."
+        elif "cannot parse data" in err_lower:
+            detail = "Facebook data layout changed or restricted. Please try another video."
         else:
             detail = re.sub(r"ERROR:\s*", "", str(err).splitlines()[0] if str(err) else "Download failed.")
         raise HTTPException(status_code=422, detail=detail)
