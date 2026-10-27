@@ -26,10 +26,10 @@ from fastapi.responses import FileResponse, JSONResponse
 
 
 # ============================================================
-# SNAPMEGA API - v6.5.1
+# SNAPMEGA API - v6.5.2
 # ============================================================
 
-APP_VERSION = "6.5.1"
+APP_VERSION = "6.5.2"
 
 MAX_CLIP_SECONDS = int(os.getenv("MAX_CLIP_SECONDS", "7200"))
 MAX_URL_LENGTH = int(os.getenv("MAX_URL_LENGTH", "4096"))
@@ -258,11 +258,8 @@ def base_ydl_options(output_dir: str) -> dict:
 
 
 def apply_youtube_options(options: dict) -> dict:
-    options["format"] = (
-        "bestvideo[ext=mp4]+bestaudio[ext=m4a]/"
-        "best[ext=mp4]/"
-        "best"
-    )
+    # قبول أفضل فيديو وصوت متاحين بمرونة ودمجهما في mp4 لتفادي خطأ format not available
+    options["format"] = "bestvideo*+bestaudio/best"
     options["merge_output_format"] = "mp4"
 
     cookie_file = Path("cookies.txt")
@@ -280,7 +277,7 @@ def apply_youtube_options(options: dict) -> dict:
 
 
 def apply_audio_options(options: dict) -> dict:
-    options["format"] = "bestaudio[ext=m4a]/bestaudio/best"
+    options["format"] = "bestaudio/best"
     options["postprocessors"] = [{
         "key": "FFmpegExtractAudio",
         "preferredcodec": "mp3",
@@ -403,12 +400,7 @@ async def download_media(
         if mode == "audio":
             options = apply_audio_options(options)
         else:
-            options["format"] = (
-                "bestvideo[ext=mp4]+"
-                "bestaudio[ext=m4a]/"
-                "best[ext=mp4]/"
-                "best"
-            )
+            options["format"] = "bestvideo*+bestaudio/best"
             options["merge_output_format"] = "mp4"
 
     if mode == "clip" and clip_start is not None and clip_end is not None:
@@ -526,7 +518,6 @@ async def api_download(
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid JSON format.")
 
-    # استخراج الرابط بأي تسمية محتملة من الواجهة
     raw_url = body.get("url") or body.get("link") or body.get("videoUrl") or ""
     url = str(raw_url).strip()
 
@@ -586,7 +577,6 @@ async def api_download(
     )
 
 
-# معالج أخطاء مخصص لإرجاع نصوص واضحة بدلاً من [object Object]
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
     return JSONResponse(
