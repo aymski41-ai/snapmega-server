@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
 
 
-APP_VERSION = "5.6.0"
+APP_VERSION = "5.7.0"
 
 app = FastAPI(
     title="SnapMega API",
@@ -102,7 +102,8 @@ def check_rate_limit(ip: str) -> None:
             detail="Too many requests. Please try again later.",
             headers={"Retry-After": str(RATE_LIMIT_WINDOW)},
         )
-    reqs.append(now)
+    requests_list = rate_limit_store[ip]
+    requests_list.append(now)
 
 class DownloadRequest(BaseModel):
     url: str = Field(..., min_length=4, max_length=MAX_URL_LENGTH)
@@ -220,9 +221,9 @@ def base_ydl_options(output_template: str) -> dict:
         "socket_timeout": 30,
         "nocheckcertificate": False,
         "http_headers": {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+            "User-Agent": "Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36 [FB_IAB/FB4A;FBAV/480.0.0.45.109;]",
             "Accept-Language": "en-US,en;q=0.9",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept": "*/*",
         },
     }
 
