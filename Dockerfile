@@ -1,4 +1,3 @@
-```dockerfile
 FROM node:26-bookworm-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
