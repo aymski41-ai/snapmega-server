@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
 
 
-APP_VERSION = "5.8.0"
+APP_VERSION = "5.8.1"
 
 app = FastAPI(
     title="SnapMega API",
@@ -221,7 +221,6 @@ def base_ydl_options(output_template: str) -> dict:
         "fragment_retries": 10,
         "socket_timeout": 30,
         "nocheckcertificate": False,
-        "impersonate": "chrome",  # ميزة حيوية لفك حظر فيسبوك وتجاوز cannot parse data
         "http_headers": {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
             "Accept-Language": "en-US,en;q=0.9",
