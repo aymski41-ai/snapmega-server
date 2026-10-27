@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
 
 
-APP_VERSION = "5.8.1"
+APP_VERSION = "5.9.0"
 
 app = FastAPI(
     title="SnapMega API",
@@ -152,6 +152,13 @@ def is_facebook_url(url: str) -> bool:
     except Exception:
         return False
 
+def is_youtube_url(url: str) -> bool:
+    try:
+        host = (urlparse(url).hostname or "").lower().rstrip(".")
+        return any(host == d or host.endswith("." + d) for d in ["youtube.com", "youtu.be", "youtube-nocookie.com"])
+    except Exception:
+        return False
+
 def resolve_fb_watch_url(url: str) -> str | None:
     if not is_fb_watch_url(url):
         return None
@@ -159,8 +166,6 @@ def resolve_fb_watch_url(url: str) -> str | None:
         session = curl_requests.Session(impersonate="chrome120")
         resp = session.get(url, allow_redirects=True, timeout=12)
         final_url = str(resp.url)
-        
-        # إذا حوّل إلى رابط تسجيل دخول، نستخرج المعرف ونبنيه برابط عام
         if "login" in final_url or "checkpoint" in final_url or "next=" in final_url:
             m = re.search(r"v%3D(\d+)", final_url) or re.search(r"videos%2F(\d+)", final_url)
             if m:
@@ -244,7 +249,6 @@ def download_video(url: str, directory: str) -> Path:
         options = base_ydl_options(output_template)
 
         if is_facebook_url(target):
-            # تحويل إلى m.facebook.com لتسهيل قراءة البيانات بدون سكربتات ثقيلة
             target = target.replace("www.facebook.com", "m.facebook.com").replace("web.facebook.com", "m.facebook.com")
             options["format"] = "best/bestvideo+bestaudio"
             options["merge_output_format"] = "mp4"
@@ -252,6 +256,15 @@ def download_video(url: str, directory: str) -> Path:
                 "Referer": "https://m.facebook.com/",
                 "Origin": "https://m.facebook.com",
             })
+        elif is_youtube_url(target):
+            # إعدادات مخصصة لتجاوز فحص الروبوت الخاص بيوتيوب
+            options["format"] = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
+            options["merge_output_format"] = "mp4"
+            options["extractor_args"] = {
+                "youtube": {
+                    "player_client": ["android", "ios"],
+                }
+            }
         elif "kick.com" in target.lower():
             options["format"] = "best[height<=480]/bestvideo[height<=480]+bestaudio/best"
             options["merge_output_format"] = "mp4"
@@ -298,12 +311,19 @@ def download_audio(url: str, directory: str) -> Path:
                 "preferredquality": "192",
             }],
         })
+
         if is_facebook_url(target):
             target = target.replace("www.facebook.com", "m.facebook.com").replace("web.facebook.com", "m.facebook.com")
             options["http_headers"].update({
                 "Referer": "https://m.facebook.com/",
                 "Origin": "https://m.facebook.com",
             })
+        elif is_youtube_url(target):
+            options["extractor_args"] = {
+                "youtube": {
+                    "player_client": ["android", "ios"],
+                }
+            }
 
         try:
             with yt_dlp.YoutubeDL(options) as ydl:
@@ -427,10 +447,10 @@ async def api_download(payload: DownloadRequest, request: Request):
     except yt_dlp.utils.DownloadError as err:
         cleanup_dir(temp_dir)
         err_lower = str(err).lower()
-        if "private" in err_lower or "login" in err_lower:
+        if "sign in to confirm you're not a bot" in err_lower:
+            detail = "YouTube restricted this download on cloud servers. Try another video link or format."
+        elif "private" in err_lower or "login" in err_lower:
             detail = "This video is private or requires login."
-        elif "cannot parse data" in err_lower:
-            detail = "Facebook data layout changed or restricted. Please try another video."
         else:
             detail = re.sub(r"ERROR:\s*", "", str(err).splitlines()[0] if str(err) else "Download failed.")
         raise HTTPException(status_code=422, detail=detail)
