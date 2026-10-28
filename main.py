@@ -33,16 +33,23 @@ def time_to_seconds(t_str: str) -> float:
     return parts[0]
 
 def apply_youtube_options(options: dict) -> dict:
-    # 360p خفيفة ومباشرة لتجنب بطء الدمج وتوفير الذاكرة
-    options["format"] = "18/worst[ext=mp4]/best[height<=360]/worst"
+    options["format"] = "18/best[height<=360]/worst[ext=mp4]/worst"
     options["merge_output_format"] = "mp4"
     options["noplaylist"] = True
-    options["socket_timeout"] = 15
+    options["socket_timeout"] = 30
+
+    # ربط ملف الكوكيز مباشرة
+    cookie_path = "cookies.txt"
+    if os.path.exists(cookie_path):
+        options["cookiefile"] = cookie_path
+
+    # تفعيل مشغل الويب المتوافق مع الكوكيز ومولد الـ PO Token المحلي
     options["extractor_args"] = {
         "youtube": {
-            "player_client": ["android", "ios"],
+            "player_client": ["web", "mweb"]
         }
     }
+
     return options
 
 @app.get("/")
