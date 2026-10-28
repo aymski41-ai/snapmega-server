@@ -110,14 +110,15 @@ def time_to_seconds(value: str) -> float:
 
 
 def apply_youtube_options(options: dict) -> dict:
-    # صيغة 18 جاهزة بالصوت والصورة لتفادي الدمج البطيء بـ FFmpeg
     options.update({
         "format": "18/best[height<=360][ext=mp4]/worst[ext=mp4]/best[height<=360]/worst",
         "merge_output_format": "mp4",
         "noplaylist": True,
+        "socket_timeout": 20,
         "extractor_args": {
             "youtube": {
-                "player_client": ["web", "mweb"]
+                "player_client": ["web"],
+                "po_token": ["web+http://127.0.0.1:4416/"]
             }
         }
     })
@@ -133,22 +134,7 @@ def apply_youtube_options(options: dict) -> dict:
 def configure_platform(options: dict, url: str) -> dict:
     host = get_host(url)
 
-    # إعدادات عامة وسريعة لجميع المنصات
-    options.update({
-        "format": "best[height<=360][ext=mp4]/best[height<=360]/best[ext=mp4]/best",
-        "merge_output_format": "mp4",
-        "http_headers": {
-            "User-Agent": USER_AGENT,
-        },
-        "socket_timeout": 15,
-        "retries": 1,
-        "fragment_retries": 1,
-        "extractor_retries": 1,
-        "noplaylist": True,
-        "ignoreerrors": False,
-    })
-
-    # YouTube
+    # 1. YouTube
     if (
         host == "youtube.com"
         or host.endswith(".youtube.com")
@@ -157,7 +143,7 @@ def configure_platform(options: dict, url: str) -> dict:
     ):
         options = apply_youtube_options(options)
 
-    # Kick — تسريع أجزاء التحميل ومنع بطء الاتصال
+    # 2. Kick — تسريع التحميل بالتوازي
     elif host == "kick.com" or host.endswith(".kick.com"):
         options.update({
             "format": "worst[ext=mp4]/best[height<=360]/worst",
@@ -173,42 +159,12 @@ def configure_platform(options: dict, url: str) -> dict:
             },
         })
 
-    # Facebook
-    elif "facebook.com" in host or host == "fb.watch":
-        options.update({
-            "format": "best[height<=360][ext=mp4]/best[height<=360]/best[ext=mp4]/best",
-            "merge_output_format": "mp4",
-            "retries": 2,
-            "fragment_retries": 2,
-            "extractor_retries": 2,
-            "http_headers": {
-                "User-Agent": USER_AGENT,
-                "Referer": "https://www.facebook.com/",
-            },
-        })
-
-    # TikTok
-    elif "tiktok.com" in host:
-        options.update({
-            "format": "best[height<=360][ext=mp4]/best[height<=360]/best[ext=mp4]/best",
-            "merge_output_format": "mp4",
-            "retries": 2,
-            "fragment_retries": 2,
-            "extractor_retries": 2,
-            "http_headers": {
-                "User-Agent": USER_AGENT,
-                "Referer": "https://www.tiktok.com/",
-            },
-        })
-
-    # Instagram
+    # 3. Instagram — قبول الصيغة الطبيعية لمنع خطأ No video formats
     elif "instagram.com" in host:
         options.update({
-            "format": "best[height<=360][ext=mp4]/best[height<=360]/best[ext=mp4]/best",
+            "format": "best/bestvideo+bestaudio",
             "merge_output_format": "mp4",
             "retries": 2,
-            "fragment_retries": 2,
-            "extractor_retries": 2,
             "socket_timeout": 20,
             "http_headers": {
                 "User-Agent": USER_AGENT,
@@ -223,6 +179,19 @@ def configure_platform(options: dict, url: str) -> dict:
 
         if instagram_cookies.is_file():
             options["cookiefile"] = str(instagram_cookies)
+
+    # 4. TikTok & Facebook — الإعدادات السريعة الأصلية
+    else:
+        options.update({
+            "format": "best/bestvideo+bestaudio",
+            "merge_output_format": "mp4",
+            "retries": 2,
+            "fragment_retries": 2,
+            "extractor_retries": 2,
+            "http_headers": {
+                "User-Agent": USER_AGENT,
+            },
+        })
 
     return options
 
@@ -274,7 +243,7 @@ def download_media(req: DownloadRequest):
     url = req.url.strip()
     mode = req.mode.lower().strip()
 
-    # تنظيف معلمات التتبع الزائدة في يوتيوب
+    # تنظيف معلمات التتبع في يوتيوب
     if "youtube.com" in url.lower() or "youtu.be" in url.lower():
         url = url.split("?si=")[0].split("&si=")[0]
 
@@ -358,7 +327,6 @@ def download_media(req: DownloadRequest):
                 }]
             )
             options["force_keyframes_at_cuts"] = True
-            # قص مباشر بدون إعادة معالجة لإنهاء العملية في ثوانٍ
             options["postprocessor_args"] = {
                 "ffmpeg": ["-c", "copy"]
             }
