@@ -369,104 +369,23 @@ def base_ydl_options(output_dir: str) -> dict:
 
 
 def apply_youtube_options(options: dict) -> dict:
-    # ========================================================
-    # YOUTUBE VIDEO FORMAT
-    # ========================================================
-
-    options["format"] = (
-        "bestvideo*+bestaudio/best"
-    )
-
+    options["format"] = "b/best"
     options["merge_output_format"] = "mp4"
 
-
-    # ========================================================
-    # YOUTUBE COOKIES
-    # ========================================================
-
     cookie_path = get_valid_cookie_path()
-
     if cookie_path:
         options["cookiefile"] = cookie_path
-
-        print(
-            f"[SnapMega] Active YouTube cookies from: "
-            f"{cookie_path}",
-            flush=True,
-        )
-
+        print(f"[SnapMega] Active YouTube cookies from: {cookie_path}", flush=True)
     else:
-        print(
-            "[SnapMega] WARNING: YouTube cookies.txt not found.",
-            flush=True,
-        )
-
-
-    # ========================================================
-    # YOUTUBE + BGUTIL PO TOKEN
-    #
-    # mweb is the primary client.
-    # tv and web_safari are fallbacks.
-    # ========================================================
+        print("[SnapMega] WARNING: YouTube cookies.txt not found.", flush=True)
 
     options["extractor_args"] = {
         "youtube": {
-            "player_client": [
-                "mweb",
-                "tv",
-                "web_safari",
-            ],
-        },
-
-        "youtubepot-bgutilhttp": {
-            "base_url": get_bgutil_provider_url(),
-        },
+            "player_client": ["android", "web"],
+        }
     }
 
-
-    # ========================================================
-    # YOUTUBE DEBUG LOGGING
-    #
-    # This is intentionally enabled only for YouTube.
-    # It lets Render logs show whether BgUtils actually
-    # generates the PO Token.
-    # ========================================================
-
-    options["quiet"] = False
-
-    options["no_warnings"] = False
-
-    options["verbose"] = True
-
-
-    # ========================================================
-    # DEBUG INFORMATION
-    # ========================================================
-
-    print(
-        "[SnapMega] YouTube clients: "
-        "mweb,tv,web_safari",
-        flush=True,
-    )
-
-    print(
-        "[SnapMega] BgUtils URL: "
-        + get_bgutil_provider_url(),
-        flush=True,
-    )
-
-    print(
-        "[SnapMega] BgUtils status: "
-        + (
-            "ONLINE"
-            if check_bgutil_provider()
-            else "OFFLINE"
-        ),
-        flush=True,
-    )
-
     return options
-
 
 def apply_audio_options(options: dict) -> dict:
     options["format"] = "bestaudio/best"
@@ -646,26 +565,23 @@ async def download_media(
             )
 
 
-    # ========================================================
-    # KICK
+   # ========================================================
+    # KICK (FAST STREAM DOWNLOAD)
     # ========================================================
 
     elif "kick.com" in url.lower():
-
-        options["format"] = (
-            "best[height<=480]/"
-            "bestvideo[height<=480]+"
-            "bestaudio/best"
-        )
-
+        options["format"] = "best[height<=720]/best"
         options["merge_output_format"] = "mp4"
+        options["concurrent_fragment_downloads"] = 10
+        options["hls_prefer_native"] = True
+        options["http_headers"] = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            "Referer": "https://kick.com/",
+        }
 
         if mode == "audio":
-            options = apply_audio_options(
-                options
-            )
-
-
+            options = apply_audio_options(options)
+            
     # ========================================================
     # OTHER PLATFORMS
     # ========================================================
@@ -703,7 +619,7 @@ async def download_media(
                 }]
             )
 
-            options["force_keyframes_at_cuts"] = True
+            options["force_keyframes_at_cuts"] = False
 
 
     # ========================================================
