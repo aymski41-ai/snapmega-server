@@ -307,17 +307,19 @@ def base_ydl_options(output_dir: str) -> dict:
 
 
 def apply_youtube_options(options: dict) -> dict:
-    options["format"] = "best[height<=1080]/bestvideo+bestaudio/best"
+    # إجبار السيرفر على سحب جودة 360p أو أقل مباشرة بدون دمج ثقيل
+    options["format"] = "best[height<=360][ext=mp4]/bestvideo[height<=360]+bestaudio/worst[ext=mp4]/worst"
     options["merge_output_format"] = "mp4"
 
-    # السماح لمكتبة bgutil بتوليد PO Token تلقائياً عبر العملاء المتوافقين
+    # تسريع التنزيل المتوازي وتقليل مهلة الانتظار
+    options["concurrent_fragment_downloads"] = 5
+    options["socket_timeout"] = 15
+
     options["extractor_args"] = {
         "youtube": {
-            "player_client": ["web", "mweb", "android"],
+            "player_client": ["android", "ios"],
         }
     }
-    
-    options["socket_timeout"] = 30
 
     return options
 
@@ -443,21 +445,18 @@ async def download_media(
     elif "kick.com" in url.lower():
         clean_url = url.split("?")[0].rstrip("/")
         
-        options["format"] = "best[height<=720]/best"
+        # حصر الجودة في 360p لتنزيل خفيف وسريع جداً
+        options["format"] = "best[height<=360]/worst"
         options["merge_output_format"] = "mp4"
-        options["concurrent_fragment_downloads"] = 5
+        options["concurrent_fragment_downloads"] = 6
         options["hls_prefer_native"] = True
-        options["socket_timeout"] = 20
+        options["socket_timeout"] = 15
         options["playlist_items"] = "1"
         
-        # إذا كان بثاً مباشراً جارياً ولم يحدد المستخدم البداية والنهاية
-        # نسحب منه مدة محددة (مثلاً آخر 10 دقائق) لتفادي تجميد السيرفر وTimeout
-        options["live_from_start"] = False
-        
-        # حماية من البث اللانهائي: إذا لم يكن مقطعاً مخصصاً، يكتفي بحد أقصى للقطع المباشر
+        # حماية من التعليق للبثوث المباشرة
         if mode != "clip":
             options["postprocessor_args"] = {
-                "ffmpeg": ["-t", "600"]  # حد أقصى 10 دقائق للبث المباشر إذا لم يقصه المستخدم
+                "ffmpeg": ["-t", "300"]  # حد أقصى 5 دقائق للبث المباشر
             }
 
         options["http_headers"] = {
