@@ -569,11 +569,12 @@ async def download_media(
     # KICK (FAST STREAM DOWNLOAD)
     # ========================================================
 
-    elif "kick.com" in url.lower():
+   elif "kick.com" in url.lower():
         options["format"] = "best[height<=720]/best"
         options["merge_output_format"] = "mp4"
         options["concurrent_fragment_downloads"] = 10
         options["hls_prefer_native"] = True
+        options["live_from_start"] = False
         options["http_headers"] = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
             "Referer": "https://kick.com/",
@@ -861,95 +862,40 @@ async def download_media(
 
 @app.get("/")
 async def root():
-
     cookie_path = get_valid_cookie_path()
 
     return {
         "name": "SnapMega",
-
         "version": APP_VERSION,
-
         "status": "online",
-
-        "has_cookies": (
-            cookie_path is not None
-        ),
-
+        "has_cookies": cookie_path is not None,
         "cookie_path": cookie_path,
-
-        "bgutil_pot_provider": {
-            "url": get_bgutil_provider_url(),
-            "online": check_bgutil_provider(),
-        },
     }
 
 
 @app.get("/health")
 async def health():
-
     cookie_path = get_valid_cookie_path()
 
     return {
         "status": "ok",
-
         "app": "SnapMega",
-
         "version": APP_VERSION,
-
-        "has_cookies": (
-            cookie_path is not None
-        ),
-
+        "has_cookies": cookie_path is not None,
         "cookie_path": cookie_path,
-
-        "ffmpeg": (
-            shutil.which("ffmpeg")
-            is not None
-        ),
-
-        "yt_dlp": getattr(
-            yt_dlp,
-            "__version__",
-            "unknown",
-        ),
-
+        "ffmpeg": shutil.which("ffmpeg") is not None,
+        "yt_dlp": getattr(yt_dlp, "__version__", "unknown"),
         "youtube": {
             "enabled": True,
-
-            "player_clients": [
-                "mweb",
-                "tv",
-                "web_safari",
-            ],
-
-            "po_token_provider": (
-                check_bgutil_provider()
-            ),
-
-            "po_token_provider_url": (
-                get_bgutil_provider_url()
-            ),
+            "player_clients": ["android", "web"],
         },
-
         "limits": {
-            "max_clip_seconds": (
-                MAX_CLIP_SECONDS
-            ),
-
-            "max_concurrent_downloads": (
-                MAX_CONCURRENT_DOWNLOADS
-            ),
-
-            "download_timeout": (
-                DOWNLOAD_TIMEOUT
-            ),
-
-            "max_output_size_mb": (
-                MAX_OUTPUT_SIZE_MB
-            ),
+            "max_clip_seconds": MAX_CLIP_SECONDS,
+            "max_concurrent_downloads": MAX_CONCURRENT_DOWNLOADS,
+            "download_timeout": DOWNLOAD_TIMEOUT,
+            "max_output_size_mb": MAX_OUTPUT_SIZE_MB,
         },
     }
-
 
 # ============================================================
 # DOWNLOAD ROUTE
