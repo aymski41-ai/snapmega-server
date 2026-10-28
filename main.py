@@ -310,13 +310,14 @@ def apply_youtube_options(options: dict) -> dict:
     options["format"] = "best[height<=1080]/bestvideo+bestaudio/best"
     options["merge_output_format"] = "mp4"
 
-    # تعطيل إرسال الكوكيز المكشوفة، والاعتماد كلياً على عملاء التلفاز والأجهزة الذكية
+    # السماح لمكتبة bgutil بتوليد PO Token تلقائياً عبر العملاء المتوافقين
     options["extractor_args"] = {
         "youtube": {
-            "player_client": ["tv", "ios", "mweb"],
-            "player_skip": ["webpage", "configs"],
+            "player_client": ["web", "mweb", "android"],
         }
     }
+    
+    options["socket_timeout"] = 30
 
     return options
 
