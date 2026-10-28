@@ -103,7 +103,7 @@ def time_to_seconds(value: str) -> float:
 
 
 def apply_optional_cookies(options: dict, *filenames: str) -> None:
-    """Use the first available cookie file, if one exists."""
+    """Use the first available non-empty cookie file."""
     for filename in filenames:
         cookie_path = BASE_DIR / filename
 
@@ -113,7 +113,6 @@ def apply_optional_cookies(options: dict, *filenames: str) -> None:
             return
 
 
-# YouTube: flexible formats and optional cookies
 def apply_youtube_options(options: dict) -> dict:
     options.update({
         "format": (
@@ -141,7 +140,6 @@ def apply_youtube_options(options: dict) -> dict:
 def configure_platform(options: dict, url: str) -> dict:
     host = get_host(url)
 
-    # Default options
     options.update({
         "format": (
             "best[height<=360][ext=mp4]/"
@@ -164,7 +162,7 @@ def configure_platform(options: dict, url: str) -> dict:
     ):
         apply_youtube_options(options)
 
-    # Kick: existing settings preserved
+    # Kick: preserve existing settings
     elif host == "kick.com" or host.endswith(".kick.com"):
         options.update({
             "format": (
@@ -184,7 +182,7 @@ def configure_platform(options: dict, url: str) -> dict:
             },
         })
 
-    # Facebook: existing settings preserved
+    # Facebook: preserve existing settings
     elif "facebook.com" in host or host == "fb.watch":
         options.update({
             "format": (
@@ -202,7 +200,7 @@ def configure_platform(options: dict, url: str) -> dict:
             },
         })
 
-    # TikTok: existing settings preserved
+    # TikTok: preserve existing settings
     elif "tiktok.com" in host:
         options.update({
             "format": (
@@ -220,8 +218,8 @@ def configure_platform(options: dict, url: str) -> dict:
             },
         })
 
-    # Instagram: corrected indentation and cookie fallback
-    elif "instagram.com" in host:
+    # Instagram: use Instagram cookies only, if provided
+    elif host == "instagram.com" or host.endswith(".instagram.com"):
         options.update({
             "format": (
                 "best[height<=360][ext=mp4]/"
@@ -229,22 +227,20 @@ def configure_platform(options: dict, url: str) -> dict:
                 "best[ext=mp4]/best"
             ),
             "merge_output_format": "mp4",
-            "retries": 3,
-            "fragment_retries": 3,
-            "extractor_retries": 3,
-            "socket_timeout": 45,
+            "retries": 2,
+            "fragment_retries": 2,
+            "extractor_retries": 2,
+            "socket_timeout": 30,
             "http_headers": {
                 "User-Agent": USER_AGENT,
                 "Referer": "https://www.instagram.com/",
+                "Accept-Language": "en-US,en;q=0.9",
             },
+            "noplaylist": True,
         })
 
-        # Prefer Instagram-specific cookies; otherwise try cookies.txt
-        apply_optional_cookies(
-            options,
-            "instagram_cookies.txt",
-            "cookies.txt",
-        )
+        # Do not use YouTube cookies as Instagram cookies.
+        apply_optional_cookies(options, "instagram_cookies.txt")
 
     return options
 
@@ -369,7 +365,13 @@ def download_media(req: DownloadRequest):
         )
 
         with yt_dlp.YoutubeDL(options) as ydl:
-            ydl.extract_info(url, download=True)
+            info = ydl.extract_info(url, download=True)
+
+        if not info:
+            raise RuntimeError(
+                "المنصة لم ترجع معلومات عن الفيديو. "
+                "تأكد أن الرابط عام وصحيح."
+            )
 
         files = [
             p for p in Path(output_dir).iterdir()
@@ -437,9 +439,6 @@ def download_media(req: DownloadRequest):
         shutil.rmtree(output_dir, ignore_errors=True)
 
         message = str(exc)
-        if len(message) > 700:
-            message = message[:700]
-
         lower_message = message.lower()
 
         if any(word in lower_message for word in (
@@ -450,23 +449,34 @@ def download_media(req: DownloadRequest):
                 "المنصة تطلب تسجيل الدخول أو التحقق من الحساب. "
                 "جرّب رابطًا عامًا وتأكد من صلاحية ملف cookies."
             )
+
         elif "no video formats found" in lower_message:
             message = (
-                "لم يتم العثور على صيغ فيديو. قد يكون المنشور صورة، "
-                "أو أن Instagram يتطلب جلسة صالحة أو يمنع طلب السيرفر."
+                "لم يتم العثور على صيغ فيديو. قد يكون المنشور صورًا، "
+                "أو أن Instagram يتطلب جلسة صالحة أو يمنع طلب السيرفر. "
+                "جرّب رابط Reel عام وتأكد من إعداد instagram_cookies.txt "
+                "إذا كان المنشور يتطلب تسجيل الدخول."
             )
+
         elif "failed to extract any player response" in lower_message:
             message = (
                 "YouTube لم يرجع بيانات المشغل المطلوبة. "
                 "تحقق من إصدار yt-dlp وإعدادات PO Token في Render."
             )
+
         elif "unsupported url" in lower_message:
             message = (
                 "المنصة لم تتعرف على هذا الرابط. "
                 "تأكد أنه رابط فيديو كامل ومدعوم."
             )
 
+        elif "timed out" in lower_message or "timeout" in lower_message:
+            message = (
+                "انتهت مهلة الاتصال بالمنصة. حاول مرة أخرى "
+                "وتأكد أن رابط الفيديو متاح."
+            )
+
         raise HTTPException(
             status_code=400,
-            detail=f"فشل التحميل: {message}",
+            detail=f"فشل التحميل: {message[:700]}",
         )
