@@ -436,37 +436,38 @@ async def download_media(
         })
         if mode == "audio":
             options = apply_audio_options(options)
-
-    # ========================================================
-    # KICK (FAST STREAM DOWNLOAD)
+# ========================================================
+    # KICK (LIVE STREAMS, CLIPS, & VODS)
     # ========================================================
     elif "kick.com" in url.lower():
+        clean_url = url.split("?")[0].rstrip("/")
+        
         options["format"] = "best[height<=720]/best"
         options["merge_output_format"] = "mp4"
-        options["concurrent_fragment_downloads"] = 10
+        options["concurrent_fragment_downloads"] = 5
         options["hls_prefer_native"] = True
+        options["socket_timeout"] = 20
+        options["playlist_items"] = "1"
+        
+        # إذا كان بثاً مباشراً جارياً ولم يحدد المستخدم البداية والنهاية
+        # نسحب منه مدة محددة (مثلاً آخر 10 دقائق) لتفادي تجميد السيرفر وTimeout
         options["live_from_start"] = False
+        
+        # حماية من البث اللانهائي: إذا لم يكن مقطعاً مخصصاً، يكتفي بحد أقصى للقطع المباشر
+        if mode != "clip":
+            options["postprocessor_args"] = {
+                "ffmpeg": ["-t", "600"]  # حد أقصى 10 دقائق للبث المباشر إذا لم يقصه المستخدم
+            }
+
         options["http_headers"] = {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/131.0.0.0 Safari/537.36"
-            ),
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
             "Referer": "https://kick.com/",
+            "Origin": "https://kick.com",
         }
+
         if mode == "audio":
             options = apply_audio_options(options)
-
-    # ========================================================
-    # OTHER PLATFORMS
-    # ========================================================
-    else:
-        if mode == "audio":
-            options = apply_audio_options(options)
-        else:
-            options["format"] = "bestvideo*+bestaudio/best"
-            options["merge_output_format"] = "mp4"
-
+            
     # ========================================================
     # CLIP
     # ========================================================
