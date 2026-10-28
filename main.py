@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from starlette.background import BackgroundTask
 
 
-app = FastAPI(title="SnapMega Server", version="2.3.0")
+app = FastAPI(title="SnapMega Server", version="2.3.1")
 
 app.add_middleware(
     CORSMiddleware,
@@ -35,7 +35,6 @@ ALLOWED_DOMAINS = {
     "facebook.com",
     "fb.watch",
     "kick.com",
-    "twitch.tv",
 }
 
 AUDIO_EXTENSIONS = {
@@ -112,15 +111,15 @@ def time_to_seconds(value: str) -> float:
 
 def apply_youtube_options(options: dict) -> dict:
     options.update({
-        # دعم الفيديوهات العادية، المقاطع القصيرة Shorts، والبثوث المباشرة
-        "format": "18/best[height<=720][ext=mp4]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best",
+        "format": "18/best[height<=480][ext=mp4]/best[ext=mp4]/best",
         "merge_output_format": "mp4",
-        "live_from_start": True,
+        "noplaylist": True,
         "socket_timeout": 25,
         "extractor_args": {
             "youtube": {
-                "player_client": ["web"],
-                "po_token": ["web+http://127.0.0.1:4416/"]
+                # استخدام ios و android و mweb يتجاوز كلياً خطأ player response
+                "player_client": ["ios", "android", "mweb"],
+                "player_skip": ["configs", "webpage"]
             }
         }
     })
@@ -135,7 +134,7 @@ def apply_youtube_options(options: dict) -> dict:
 def configure_platform(options: dict, url: str) -> dict:
     host = get_host(url)
 
-    # 1. إعدادات YouTube الشاملة (Shorts + Livestream + Video)
+    # 1. YouTube
     if (
         host == "youtube.com"
         or host.endswith(".youtube.com")
@@ -144,7 +143,7 @@ def configure_platform(options: dict, url: str) -> dict:
     ):
         options = apply_youtube_options(options)
 
-    # 2. Kick — بث مباشر ومقاطع مسجلة (VODs)
+    # 2. Kick — حل مشكلة البث المباشر نهائياً
     elif host == "kick.com" or host.endswith(".kick.com"):
         options.update({
             "format": "best/worst[ext=mp4]/worst",
@@ -152,7 +151,8 @@ def configure_platform(options: dict, url: str) -> dict:
             "concurrent_fragment_downloads": 8,
             "buffersize": 32768,
             "hls_prefer_native": True,
-            "live_from_start": True,
+            # إيقاف live_from_start لحل خطأ no formats that can be downloaded from the start
+            "live_from_start": False,
             "playlist_items": "1",
             "http_headers": {
                 "User-Agent": USER_AGENT,
@@ -161,7 +161,7 @@ def configure_platform(options: dict, url: str) -> dict:
             },
         })
 
-    # 3. Instagram — ريلز (Reels)، منشورات عادية (Posts)، وقصص
+    # 3. Instagram
     elif "instagram.com" in host:
         options.update({
             "format": "bestvideo+bestaudio/best",
@@ -169,7 +169,6 @@ def configure_platform(options: dict, url: str) -> dict:
             "retries": 3,
             "socket_timeout": 20,
             "extract_flat": False,
-            # إذا كان المنشور يحتوي على ألبوم، يسحب أول فيديو متاح
             "playlist_items": "1",
             "http_headers": {
                 "User-Agent": "Instagram 278.0.0.19.115 Android (30/11; 480dpi; 1080x2280; samsung; SM-G998B; p3s; exynos2100; en_US; 460010976)",
@@ -181,12 +180,12 @@ def configure_platform(options: dict, url: str) -> dict:
         if instagram_cookies.is_file():
             options["cookiefile"] = str(instagram_cookies)
 
-    # 4. TikTok & Facebook — فيديوهات عادية، ريلز، وبث مباشر
+    # 4. TikTok & Facebook
     else:
         options.update({
             "format": "bestvideo*+bestaudio/best",
             "merge_output_format": "mp4",
-            "live_from_start": True,
+            "live_from_start": False,
             "retries": 2,
             "fragment_retries": 2,
             "extractor_retries": 2,
@@ -217,7 +216,7 @@ def health_check():
     return {
         "ok": True,
         "service": "snapmega-api",
-        "version": "2.3.0",
+        "version": "2.3.1",
         "yt_dlp": yt_dlp.version.__version__,
         "status": "ready",
     }
@@ -228,7 +227,7 @@ def download_media(req: DownloadRequest):
     url = req.url.strip()
     mode = req.mode.lower().strip()
 
-    # تنظيف الروابط من معلمات التتبع
+    # تنظيف معلمات التتبع
     if "youtube.com" in url.lower() or "youtu.be" in url.lower():
         url = url.split("?si=")[0].split("&si=")[0]
     elif "instagram.com" in url.lower():
@@ -279,7 +278,6 @@ def download_media(req: DownloadRequest):
         "%(id)s.%(ext)s",
     )
 
-    # إعدادات عامة مرنة
     options = {
         "outtmpl": output_template,
         "quiet": True,
@@ -290,7 +288,6 @@ def download_media(req: DownloadRequest):
         "extractor_retries": 2,
         "ignoreerrors": False,
         "overwrites": True,
-        # مهم: يسمح بسحب العنصر الأول دون تحميل الألبوم كاملاً
         "playlist_items": "1",
     }
 
