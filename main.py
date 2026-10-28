@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from starlette.background import BackgroundTask
 
 
-app = FastAPI(title="SnapMega Server", version="2.2.0")
+app = FastAPI(title="SnapMega Server", version="2.3.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -35,6 +35,7 @@ ALLOWED_DOMAINS = {
     "facebook.com",
     "fb.watch",
     "kick.com",
+    "twitch.tv",
 }
 
 AUDIO_EXTENSIONS = {
@@ -43,7 +44,7 @@ AUDIO_EXTENSIONS = {
 }
 
 VIDEO_EXTENSIONS = {
-    ".mp4", ".m4v", ".mkv", ".webm", ".mov",
+    ".mp4", ".m4v", ".mkv", ".webm", ".mov", ".ts",
 }
 
 MEDIA_EXTENSIONS = AUDIO_EXTENSIONS | VIDEO_EXTENSIONS
@@ -111,10 +112,11 @@ def time_to_seconds(value: str) -> float:
 
 def apply_youtube_options(options: dict) -> dict:
     options.update({
-        "format": "18/best[height<=360][ext=mp4]/worst[ext=mp4]/best[height<=360]/worst",
+        # دعم الفيديوهات العادية، المقاطع القصيرة Shorts، والبثوث المباشرة
+        "format": "18/best[height<=720][ext=mp4]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best",
         "merge_output_format": "mp4",
-        "noplaylist": True,
-        "socket_timeout": 20,
+        "live_from_start": True,
+        "socket_timeout": 25,
         "extractor_args": {
             "youtube": {
                 "player_client": ["web"],
@@ -124,7 +126,6 @@ def apply_youtube_options(options: dict) -> dict:
     })
 
     cookie_path = Path(__file__).resolve().parent / "cookies.txt"
-
     if cookie_path.is_file():
         options["cookiefile"] = str(cookie_path)
 
@@ -134,7 +135,7 @@ def apply_youtube_options(options: dict) -> dict:
 def configure_platform(options: dict, url: str) -> dict:
     host = get_host(url)
 
-    # 1. YouTube
+    # 1. إعدادات YouTube الشاملة (Shorts + Livestream + Video)
     if (
         host == "youtube.com"
         or host.endswith(".youtube.com")
@@ -143,15 +144,16 @@ def configure_platform(options: dict, url: str) -> dict:
     ):
         options = apply_youtube_options(options)
 
-    # 2. Kick — تسريع التحميل بالتوازي
+    # 2. Kick — بث مباشر ومقاطع مسجلة (VODs)
     elif host == "kick.com" or host.endswith(".kick.com"):
         options.update({
-            "format": "worst[ext=mp4]/best[height<=360]/worst",
+            "format": "best/worst[ext=mp4]/worst",
             "merge_output_format": "mp4",
             "concurrent_fragment_downloads": 8,
             "buffersize": 32768,
             "hls_prefer_native": True,
-            "live_from_start": False,
+            "live_from_start": True,
+            "playlist_items": "1",
             "http_headers": {
                 "User-Agent": USER_AGENT,
                 "Referer": "https://kick.com/",
@@ -159,35 +161,36 @@ def configure_platform(options: dict, url: str) -> dict:
             },
         })
 
-    # 3. Instagram — قبول الصيغة الطبيعية لمنع خطأ No video formats
+    # 3. Instagram — ريلز (Reels)، منشورات عادية (Posts)، وقصص
     elif "instagram.com" in host:
         options.update({
-            "format": "best/bestvideo+bestaudio",
+            "format": "bestvideo+bestaudio/best",
             "merge_output_format": "mp4",
-            "retries": 2,
+            "retries": 3,
             "socket_timeout": 20,
+            "extract_flat": False,
+            # إذا كان المنشور يحتوي على ألبوم، يسحب أول فيديو متاح
+            "playlist_items": "1",
             "http_headers": {
-                "User-Agent": USER_AGENT,
-                "Referer": "https://www.instagram.com/",
+                "User-Agent": "Instagram 278.0.0.19.115 Android (30/11; 480dpi; 1080x2280; samsung; SM-G998B; p3s; exynos2100; en_US; 460010976)",
+                "Accept-Language": "en-US,en;q=0.9",
             },
         })
 
-        instagram_cookies = (
-            Path(__file__).resolve().parent
-            / "instagram_cookies.txt"
-        )
-
+        instagram_cookies = Path(__file__).resolve().parent / "instagram_cookies.txt"
         if instagram_cookies.is_file():
             options["cookiefile"] = str(instagram_cookies)
 
-    # 4. TikTok & Facebook — الإعدادات السريعة الأصلية
+    # 4. TikTok & Facebook — فيديوهات عادية، ريلز، وبث مباشر
     else:
         options.update({
-            "format": "best/bestvideo+bestaudio",
+            "format": "bestvideo*+bestaudio/best",
             "merge_output_format": "mp4",
+            "live_from_start": True,
             "retries": 2,
             "fragment_retries": 2,
             "extractor_retries": 2,
+            "playlist_items": "1",
             "http_headers": {
                 "User-Agent": USER_AGENT,
             },
@@ -200,30 +203,12 @@ def validate_media_url(url: str) -> None:
     parsed = urlparse(url)
     host = get_host(url)
     path = parsed.path.lower()
-    query = parsed.query.lower()
 
     if "tiktok.com" in host and "/photo/" in path:
         raise HTTPException(
             status_code=400,
-            detail=(
-                "هذا رابط صور TikTok وليس فيديو. "
-                "استعمل رابط فيديو يحتوي على /video/."
-            ),
+            detail="هذا رابط صور TikTok. الأداة مخصصة للفيديوهات.",
         )
-
-    if "facebook.com" in host and path.rstrip("/") == "/watch":
-        has_video_id = bool(
-            re.search(r"(?:^|&)v=\d+", query)
-        )
-
-        if not has_video_id:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    "رابط Facebook ناقص. "
-                    "انسخ رابط الفيديو نفسه أو رابط المشاركة الكامل."
-                ),
-            )
 
 
 @app.get("/")
@@ -232,7 +217,7 @@ def health_check():
     return {
         "ok": True,
         "service": "snapmega-api",
-        "version": "2.2.0",
+        "version": "2.3.0",
         "yt_dlp": yt_dlp.version.__version__,
         "status": "ready",
     }
@@ -243,17 +228,16 @@ def download_media(req: DownloadRequest):
     url = req.url.strip()
     mode = req.mode.lower().strip()
 
-    # تنظيف معلمات التتبع في يوتيوب
+    # تنظيف الروابط من معلمات التتبع
     if "youtube.com" in url.lower() or "youtu.be" in url.lower():
         url = url.split("?si=")[0].split("&si=")[0]
+    elif "instagram.com" in url.lower():
+        url = url.split("?")[0].rstrip("/")
 
     if not is_allowed_url(url):
         raise HTTPException(
             status_code=400,
-            detail=(
-                "رابط غير مدعوم. استعمل رابطًا من "
-                "YouTube أو TikTok أو Instagram أو Facebook أو Kick."
-            ),
+            detail="رابط غير مدعوم. استعمل رابطًا من YouTube أو TikTok أو Instagram أو Facebook أو Kick.",
         )
 
     validate_media_url(url)
@@ -295,17 +279,19 @@ def download_media(req: DownloadRequest):
         "%(id)s.%(ext)s",
     )
 
+    # إعدادات عامة مرنة
     options = {
         "outtmpl": output_template,
         "quiet": True,
         "no_warnings": True,
-        "noplaylist": True,
-        "socket_timeout": 15,
-        "retries": 1,
-        "fragment_retries": 1,
-        "extractor_retries": 1,
+        "socket_timeout": 20,
+        "retries": 2,
+        "fragment_retries": 2,
+        "extractor_retries": 2,
         "ignoreerrors": False,
         "overwrites": True,
+        # مهم: يسمح بسحب العنصر الأول دون تحميل الألبوم كاملاً
+        "playlist_items": "1",
     }
 
     try:
@@ -351,14 +337,12 @@ def download_media(req: DownloadRequest):
                 path for path in files
                 if path.suffix.lower() in AUDIO_EXTENSIONS
             ]
-
             if audio_files:
                 files = audio_files
 
         if not files:
             raise RuntimeError(
-                "لم يتم العثور على ملف صالح بعد التحميل. "
-                "قد يكون الفيديو خاصًا أو غير متاح."
+                "لم يتم العثور على فيديو داخل هذا الرابط. قد يكون المنشور صوراً فقط أو حساباً خاصاً."
             )
 
         result = max(
@@ -379,6 +363,7 @@ def download_media(req: DownloadRequest):
             ".mkv": "video/x-matroska",
             ".mov": "video/quicktime",
             ".flac": "audio/flac",
+            ".ts": "video/mp2t",
         }
 
         return FileResponse(
@@ -401,49 +386,17 @@ def download_media(req: DownloadRequest):
 
     except Exception as exc:
         shutil.rmtree(output_dir, ignore_errors=True)
-
         message = str(exc)
         lower_message = message.lower()
 
-        if any(word in lower_message for word in (
-            "login",
-            "log in",
-            "sign in",
-            "private",
-            "checkpoint",
-            "cookies",
-        )):
-            message = (
-                "المنصة قد تتطلب تسجيل الدخول أو أن الفيديو خاص. "
-                "جرّب رابط فيديو عام."
-            )
-
+        if any(word in lower_message for word in ("login", "private", "checkpoint", "cookies")):
+            message = "المحتوى خاص أو يتطلب تسجيل الدخول."
         elif "unsupported url" in lower_message:
-            message = (
-                "المنصة لم تتعرف على الرابط. "
-                "تأكد أنه رابط فيديو كامل وصحيح."
-            )
-
-        elif (
-            "ffmpeg" in lower_message
-            or "ffprobe" in lower_message
-        ):
-            message = (
-                "السيرفر يحتاج FFmpeg لمعالجة هذا الملف. "
-                "تحقق من تثبيته في Dockerfile."
-            )
-
-        elif (
-            "403" in lower_message
-            or "forbidden" in lower_message
-        ):
-            message = (
-                "المنصة رفضت طلب التحميل مؤقتًا. "
-                "جرّب رابطًا عامًا آخر."
-            )
-
+            message = "الرابط غير صالح أو غير مدعوم."
+        elif "no video formats" in lower_message:
+            message = "هذا المنشور لا يحتوي على فيديو (قد يكون صوراً فقط)."
         else:
-            message = message[:500]
+            message = message[:400]
 
         raise HTTPException(
             status_code=400,
