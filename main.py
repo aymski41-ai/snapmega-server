@@ -243,6 +243,17 @@ def normalize_url(url: str) -> str:
 # ============================================================
 
 def get_valid_cookie_path() -> str | None:
+    # 1. القراءة من متغير البيئة YOUTUBE_COOKIES_CONTENT في Render وكتابته في ملف مؤقت
+    env_cookies = os.getenv("YOUTUBE_COOKIES_CONTENT")
+    if env_cookies and len(env_cookies.strip()) > 10:
+        target_path = Path("/tmp/cookies.txt")
+        try:
+            target_path.write_text(env_cookies.strip(), encoding="utf-8")
+            return str(target_path.resolve())
+        except Exception as e:
+            print(f"[SnapMega] Error writing env cookies: {e}", flush=True)
+
+    # 2. البحث في مسارات الملفات العادية على القرص
     potential_paths = [
         Path("cookies.txt"),
         Path("cookies.txt.txt"),
@@ -260,7 +271,6 @@ def get_valid_cookie_path() -> str | None:
             continue
 
     return None
-
 
 # ============================================================
 # YT-DLP OPTIONS CONFIGURATION
