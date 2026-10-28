@@ -77,20 +77,32 @@ def download_media(req: DownloadRequest):
     # 1. إعدادات YouTube
     if "youtube.com" in url.lower() or "youtu.be" in url.lower():
         options = apply_youtube_options(options)
-
-    # 2. إعدادات Kick السريعة وحماية البث المباشر
+# 2. إعدادات Kick السريعة لتفادي مهلة Cloudflare 524
     elif "kick.com" in url.lower():
         url = url.split("?")[0].rstrip("/")
+        
+        # اختيار أقل جودة متوفرة لتقليل الحجم إلى أقصى حد
         options["format"] = "worst[ext=mp4]/best[height<=360]/worst"
         options["merge_output_format"] = "mp4"
+        
+        # تسريع تحميل الأجزاء بالتوازي لرفع السرعة من 80KiB/s إلى أقصى سرعة ممكنة
         options["concurrent_fragment_downloads"] = 10
-        options["hls_prefer_native"] = True
+        options["buffersize"] = 1024 * 16
+        options["hls_prefer_native"] = False  # استخدام ffmpeg لمعالجة أسرع للـ HLS
         options["playlist_items"] = "1"
         options["live_from_start"] = False
+        options["socket_timeout"] = 15
+        
+        # منع تعليق FFmpeg
+        options["postprocessor_args"] = {
+            "ffmpeg": ["-threads", "4", "-preset", "ultrafast"]
+        }
+
         options["http_headers"] = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
             "Referer": "https://kick.com/",
             "Origin": "https://kick.com",
+            "Accept": "*/*",
         }
 
     # 3. إعدادات استخراج الصوت فقط
