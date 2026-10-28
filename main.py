@@ -1,39 +1,29 @@
-
 import os
 import re
 import shutil
 import tempfile
-import logging
+import threading
 from pathlib import Path
 from urllib.parse import urlparse
 
+import yt_dlp
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from starlette.background import BackgroundTask
 from pydantic import BaseModel
-import yt_dlp
+from starlette.background import BackgroundTask
 
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("snapmega")
-
-app = FastAPI(title="SnapMega Server")
+app = FastAPI(title="SnapMega Server", version="2.2.0")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=False,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=["Content-Disposition"],
 )
-
-
-class DownloadRequest(BaseModel):
-    url: str
-    mode: str = "video"
-    clip_start: str | None = None
-    clip_end: str | None = None
 
 
 ALLOWED_DOMAINS = {
@@ -48,12 +38,15 @@ ALLOWED_DOMAINS = {
 }
 
 AUDIO_EXTENSIONS = {
-    ".mp3", ".m4a", ".aac", ".opus", ".ogg", ".wav", ".flac"
+    ".mp3", ".m4a", ".aac", ".opus",
+    ".ogg", ".wav", ".flac",
 }
 
-MEDIA_EXTENSIONS = AUDIO_EXTENSIONS | {
-    ".mp4", ".m4v", ".mkv", ".webm", ".mov"
+VIDEO_EXTENSIONS = {
+    ".mp4", ".m4v", ".mkv", ".webm", ".mov",
 }
+
+MEDIA_EXTENSIONS = AUDIO_EXTENSIONS | VIDEO_EXTENSIONS
 
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -61,20 +54,29 @@ USER_AGENT = (
     "Chrome/131.0.0.0 Safari/537.36"
 )
 
-BASE_DIR = Path(__file__).resolve().parent
+download_semaphore = threading.BoundedSemaphore(2)
+
+
+class DownloadRequest(BaseModel):
+    url: str
+    mode: str = "video"
+    clip_start: str | None = None
+    clip_end: str | None = None
 
 
 def get_host(url: str) -> str:
-    return (urlparse(url).hostname or "").lower()
+    return (urlparse(url).hostname or "").lower().rstrip(".")
 
 
 def is_allowed_url(url: str) -> bool:
     try:
         parsed = urlparse(url)
-        host = (parsed.hostname or "").lower()
+        host = (parsed.hostname or "").lower().rstrip(".")
 
         return (
             parsed.scheme.lower() in {"http", "https"}
+            and not parsed.username
+            and not parsed.password
             and any(
                 host == domain or host.endswith("." + domain)
                 for domain in ALLOWED_DOMAINS
@@ -90,66 +92,60 @@ def time_to_seconds(value: str) -> float:
     if not 1 <= len(parts) <= 3:
         raise ValueError("صيغة الوقت غير صحيحة.")
 
-    if not all(re.fullmatch(r"\d+(?:\.\d+)?", p) for p in parts):
+    if not all(
+        re.fullmatch(r"\d+(?:\.\d+)?", part)
+        for part in parts
+    ):
         raise ValueError("صيغة الوقت غير صحيحة.")
 
-    numbers = [float(p) for p in parts]
+    numbers = [float(part) for part in parts]
 
     if len(numbers) == 3:
         return numbers[0] * 3600 + numbers[1] * 60 + numbers[2]
+
     if len(numbers) == 2:
         return numbers[0] * 60 + numbers[1]
+
     return numbers[0]
 
 
-def apply_optional_cookies(options: dict, *filenames: str) -> None:
-    """Use the first available non-empty cookie file."""
-    for filename in filenames:
-        cookie_path = BASE_DIR / filename
-
-        if cookie_path.is_file() and cookie_path.stat().st_size > 0:
-            options["cookiefile"] = str(cookie_path)
-            logger.info("Using cookie file: %s", filename)
-            return
-
-
 def apply_youtube_options(options: dict) -> dict:
+    # صيغة 18 جاهزة بالصوت والصورة لتفادي الدمج البطيء بـ FFmpeg
     options.update({
-        "format": (
-            "best[height<=360][ext=mp4]/"
-            "best[height<=360]/"
-            "bestvideo[height<=360]+bestaudio/"
-            "bestvideo+bestaudio/best"
-        ),
+        "format": "18/best[height<=360][ext=mp4]/worst[ext=mp4]/best[height<=360]/worst",
         "merge_output_format": "mp4",
         "noplaylist": True,
-        "socket_timeout": 45,
-        "retries": 3,
-        "fragment_retries": 3,
-        "extractor_retries": 3,
-        "http_headers": {
-            "User-Agent": USER_AGENT,
-            "Referer": "https://www.youtube.com/",
-        },
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["web", "mweb"]
+            }
+        }
     })
 
-    apply_optional_cookies(options, "cookies.txt")
+    cookie_path = Path(__file__).resolve().parent / "cookies.txt"
+
+    if cookie_path.is_file():
+        options["cookiefile"] = str(cookie_path)
+
     return options
 
 
 def configure_platform(options: dict, url: str) -> dict:
     host = get_host(url)
 
+    # إعدادات عامة وسريعة لجميع المنصات
     options.update({
-        "format": (
-            "best[height<=360][ext=mp4]/"
-            "best[height<=360]/"
-            "worst[ext=mp4]/worst"
-        ),
+        "format": "best[height<=360][ext=mp4]/best[height<=360]/best[ext=mp4]/best",
         "merge_output_format": "mp4",
         "http_headers": {
             "User-Agent": USER_AGENT,
         },
+        "socket_timeout": 15,
+        "retries": 1,
+        "fragment_retries": 1,
+        "extractor_retries": 1,
+        "noplaylist": True,
+        "ignoreerrors": False,
     })
 
     # YouTube
@@ -157,22 +153,17 @@ def configure_platform(options: dict, url: str) -> dict:
         host == "youtube.com"
         or host.endswith(".youtube.com")
         or host == "youtu.be"
-        or host == "youtube-nocookie.com"
         or host.endswith(".youtube-nocookie.com")
     ):
-        apply_youtube_options(options)
+        options = apply_youtube_options(options)
 
-    # Kick: preserve existing settings
+    # Kick — تسريع أجزاء التحميل ومنع بطء الاتصال
     elif host == "kick.com" or host.endswith(".kick.com"):
         options.update({
-            "format": (
-                "best[height<=360][ext=mp4]/"
-                "best[height<=360]/"
-                "worst[ext=mp4]/worst"
-            ),
+            "format": "worst[ext=mp4]/best[height<=360]/worst",
             "merge_output_format": "mp4",
-            "concurrent_fragment_downloads": 4,
-            "buffersize": 16384,
+            "concurrent_fragment_downloads": 8,
+            "buffersize": 32768,
             "hls_prefer_native": True,
             "live_from_start": False,
             "http_headers": {
@@ -182,17 +173,13 @@ def configure_platform(options: dict, url: str) -> dict:
             },
         })
 
-    # Facebook: preserve existing settings
+    # Facebook
     elif "facebook.com" in host or host == "fb.watch":
         options.update({
-            "format": (
-                "best[height<=360][ext=mp4]/"
-                "best[height<=360]/"
-                "worst[ext=mp4]/worst"
-            ),
+            "format": "best[height<=360][ext=mp4]/best[height<=360]/best[ext=mp4]/best",
             "merge_output_format": "mp4",
-            "retries": 3,
-            "fragment_retries": 3,
+            "retries": 2,
+            "fragment_retries": 2,
             "extractor_retries": 2,
             "http_headers": {
                 "User-Agent": USER_AGENT,
@@ -200,17 +187,13 @@ def configure_platform(options: dict, url: str) -> dict:
             },
         })
 
-    # TikTok: preserve existing settings
+    # TikTok
     elif "tiktok.com" in host:
         options.update({
-            "format": (
-                "best[height<=360][ext=mp4]/"
-                "best[height<=360]/"
-                "worst[ext=mp4]/worst"
-            ),
+            "format": "best[height<=360][ext=mp4]/best[height<=360]/best[ext=mp4]/best",
             "merge_output_format": "mp4",
-            "retries": 3,
-            "fragment_retries": 3,
+            "retries": 2,
+            "fragment_retries": 2,
             "extractor_retries": 2,
             "http_headers": {
                 "User-Agent": USER_AGENT,
@@ -218,36 +201,35 @@ def configure_platform(options: dict, url: str) -> dict:
             },
         })
 
-    # Instagram: use Instagram cookies only, if provided
-    elif host == "instagram.com" or host.endswith(".instagram.com"):
+    # Instagram
+    elif "instagram.com" in host:
         options.update({
-            "format": (
-                "best[height<=360][ext=mp4]/"
-                "best[height<=360]/"
-                "best[ext=mp4]/best"
-            ),
+            "format": "best[height<=360][ext=mp4]/best[height<=360]/best[ext=mp4]/best",
             "merge_output_format": "mp4",
             "retries": 2,
             "fragment_retries": 2,
             "extractor_retries": 2,
-            "socket_timeout": 30,
+            "socket_timeout": 20,
             "http_headers": {
                 "User-Agent": USER_AGENT,
                 "Referer": "https://www.instagram.com/",
-                "Accept-Language": "en-US,en;q=0.9",
             },
-            "noplaylist": True,
         })
 
-        # Do not use YouTube cookies as Instagram cookies.
-        apply_optional_cookies(options, "instagram_cookies.txt")
+        instagram_cookies = (
+            Path(__file__).resolve().parent
+            / "instagram_cookies.txt"
+        )
+
+        if instagram_cookies.is_file():
+            options["cookiefile"] = str(instagram_cookies)
 
     return options
 
 
 def validate_media_url(url: str) -> None:
-    host = get_host(url)
     parsed = urlparse(url)
+    host = get_host(url)
     path = parsed.path.lower()
     query = parsed.query.lower()
 
@@ -261,13 +243,16 @@ def validate_media_url(url: str) -> None:
         )
 
     if "facebook.com" in host and path.rstrip("/") == "/watch":
-        has_video_id = bool(re.search(r"(?:^|&)v=\d+", query))
+        has_video_id = bool(
+            re.search(r"(?:^|&)v=\d+", query)
+        )
+
         if not has_video_id:
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    "رابط Facebook ناقص. انسخ رابط الفيديو نفسه "
-                    "أو رابط المشاركة الكامل."
+                    "رابط Facebook ناقص. "
+                    "انسخ رابط الفيديو نفسه أو رابط المشاركة الكامل."
                 ),
             )
 
@@ -276,9 +261,11 @@ def validate_media_url(url: str) -> None:
 @app.get("/health")
 def health_check():
     return {
-        "status": "ok",
-        "message": "SnapMega server is alive",
+        "ok": True,
+        "service": "snapmega-api",
+        "version": "2.2.0",
         "yt_dlp": yt_dlp.version.__version__,
+        "status": "ready",
     }
 
 
@@ -287,10 +274,17 @@ def download_media(req: DownloadRequest):
     url = req.url.strip()
     mode = req.mode.lower().strip()
 
+    # تنظيف معلمات التتبع الزائدة في يوتيوب
+    if "youtube.com" in url.lower() or "youtu.be" in url.lower():
+        url = url.split("?si=")[0].split("&si=")[0]
+
     if not is_allowed_url(url):
         raise HTTPException(
             status_code=400,
-            detail="رابط غير مدعوم. استعمل رابطًا من منصة مدعومة.",
+            detail=(
+                "رابط غير مدعوم. استعمل رابطًا من "
+                "YouTube أو TikTok أو Instagram أو Facebook أو Kick."
+            ),
         )
 
     validate_media_url(url)
@@ -301,47 +295,49 @@ def download_media(req: DownloadRequest):
             detail="نوع التحميل غير صالح.",
         )
 
-    if (req.clip_start is None) != (req.clip_end is None):
-        raise HTTPException(
-            status_code=400,
-            detail="حدد وقت البداية والنهاية للقص.",
-        )
+    start_sec = None
+    end_sec = None
 
-    start_sec = end_sec = None
+    if mode == "clip":
+        if not req.clip_start or not req.clip_end:
+            raise HTTPException(
+                status_code=400,
+                detail="حدد وقت البداية والنهاية للمقطع.",
+            )
 
-    if req.clip_start is not None and req.clip_end is not None:
         try:
             start_sec = time_to_seconds(req.clip_start)
             end_sec = time_to_seconds(req.clip_end)
         except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc))
+            raise HTTPException(
+                status_code=400,
+                detail=str(exc),
+            )
 
         if start_sec < 0 or end_sec <= start_sec:
             raise HTTPException(
                 status_code=400,
-                detail="وقت نهاية المقطع يجب أن يكون بعد وقت البداية.",
+                detail="وقت النهاية يجب أن يكون بعد وقت البداية.",
             )
 
     output_dir = tempfile.mkdtemp(prefix="snapmega_")
-    output_template = os.path.join(output_dir, "%(id)s.%(ext)s")
+    output_template = os.path.join(
+        output_dir,
+        "%(id)s.%(ext)s",
+    )
 
-   options = {
-    "outtmpl": output_template,
-    "quiet": True,
-    "no_warnings": True,
-    "noplaylist": True,
-
-    # تقليل وقت الانتظار عند فشل الاتصال
-    "socket_timeout": 20,
-    "retries": 1,
-    "fragment_retries": 1,
-    "extractor_retries": 1,
-
-    # تسريع تحميل الأجزاء عندما تكون المنصة تدعم ذلك
-    "concurrent_fragment_downloads": 4,
-
-    "ignoreerrors": False,
-}
+    options = {
+        "outtmpl": output_template,
+        "quiet": True,
+        "no_warnings": True,
+        "noplaylist": True,
+        "socket_timeout": 15,
+        "retries": 1,
+        "fragment_retries": 1,
+        "extractor_retries": 1,
+        "ignoreerrors": False,
+        "overwrites": True,
+    }
 
     try:
         options = configure_platform(options, url)
@@ -354,7 +350,7 @@ def download_media(req: DownloadRequest):
                 "preferredquality": "128",
             }]
 
-        if start_sec is not None and end_sec is not None:
+        if mode == "clip":
             options["download_ranges"] = (
                 lambda info, ydl: [{
                     "start_time": start_sec,
@@ -362,58 +358,58 @@ def download_media(req: DownloadRequest):
                 }]
             )
             options["force_keyframes_at_cuts"] = True
+            # قص مباشر بدون إعادة معالجة لإنهاء العملية في ثوانٍ
+            options["postprocessor_args"] = {
+                "ffmpeg": ["-c", "copy"]
+            }
 
-        logger.info(
-            "Download requested: host=%s mode=%s yt_dlp=%s",
-            get_host(url),
-            mode,
-            yt_dlp.version.__version__,
-        )
-
-        with yt_dlp.YoutubeDL(options) as ydl:
-            info = ydl.extract_info(url, download=True)
-
-        if not info:
-            raise RuntimeError(
-                "المنصة لم ترجع معلومات عن الفيديو. "
-                "تأكد أن الرابط عام وصحيح."
-            )
+        with download_semaphore:
+            with yt_dlp.YoutubeDL(options) as ydl:
+                ydl.extract_info(url, download=True)
 
         files = [
-            p for p in Path(output_dir).iterdir()
-            if p.is_file()
-            and p.suffix.lower() in MEDIA_EXTENSIONS
-            and not p.name.endswith((".part", ".ytdl"))
-            and p.stat().st_size > 0
+            path
+            for path in Path(output_dir).iterdir()
+            if (
+                path.is_file()
+                and path.suffix.lower() in MEDIA_EXTENSIONS
+                and not path.name.endswith((".part", ".ytdl"))
+                and path.stat().st_size > 0
+            )
         ]
 
         if mode == "audio":
             audio_files = [
-                p for p in files
-                if p.suffix.lower() in AUDIO_EXTENSIONS
+                path for path in files
+                if path.suffix.lower() in AUDIO_EXTENSIONS
             ]
+
             if audio_files:
                 files = audio_files
 
         if not files:
             raise RuntimeError(
-                "لم يتم العثور على ملف صالح بعد التحميل."
+                "لم يتم العثور على ملف صالح بعد التحميل. "
+                "قد يكون الفيديو خاصًا أو غير متاح."
             )
 
-        result = max(files, key=lambda p: p.stat().st_mtime)
+        result = max(
+            files,
+            key=lambda path: path.stat().st_mtime,
+        )
 
         content_types = {
             ".mp4": "video/mp4",
+            ".m4v": "video/mp4",
             ".mp3": "audio/mpeg",
             ".m4a": "audio/mp4",
-            ".webm": "video/webm",
-            ".mkv": "video/x-matroska",
-            ".mov": "video/quicktime",
-            ".m4v": "video/mp4",
             ".aac": "audio/aac",
             ".opus": "audio/opus",
             ".ogg": "audio/ogg",
             ".wav": "audio/wav",
+            ".webm": "video/webm",
+            ".mkv": "video/x-matroska",
+            ".mov": "video/quicktime",
             ".flac": "audio/flac",
         }
 
@@ -436,53 +432,52 @@ def download_media(req: DownloadRequest):
         raise
 
     except Exception as exc:
-        logger.exception(
-            "Download failed: host=%s mode=%s",
-            get_host(url),
-            mode,
-        )
-
         shutil.rmtree(output_dir, ignore_errors=True)
 
         message = str(exc)
         lower_message = message.lower()
 
         if any(word in lower_message for word in (
-            "login", "log in", "sign in", "private", "checkpoint",
-            "challenge_required", "consent_required",
+            "login",
+            "log in",
+            "sign in",
+            "private",
+            "checkpoint",
+            "cookies",
         )):
             message = (
-                "المنصة تطلب تسجيل الدخول أو التحقق من الحساب. "
-                "جرّب رابطًا عامًا وتأكد من صلاحية ملف cookies."
-            )
-
-        elif "no video formats found" in lower_message:
-            message = (
-                "لم يتم العثور على صيغ فيديو. قد يكون المنشور صورًا، "
-                "أو أن Instagram يتطلب جلسة صالحة أو يمنع طلب السيرفر. "
-                "جرّب رابط Reel عام وتأكد من إعداد instagram_cookies.txt "
-                "إذا كان المنشور يتطلب تسجيل الدخول."
-            )
-
-        elif "failed to extract any player response" in lower_message:
-            message = (
-                "YouTube لم يرجع بيانات المشغل المطلوبة. "
-                "تحقق من إصدار yt-dlp وإعدادات PO Token في Render."
+                "المنصة قد تتطلب تسجيل الدخول أو أن الفيديو خاص. "
+                "جرّب رابط فيديو عام."
             )
 
         elif "unsupported url" in lower_message:
             message = (
-                "المنصة لم تتعرف على هذا الرابط. "
-                "تأكد أنه رابط فيديو كامل ومدعوم."
+                "المنصة لم تتعرف على الرابط. "
+                "تأكد أنه رابط فيديو كامل وصحيح."
             )
 
-        elif "timed out" in lower_message or "timeout" in lower_message:
+        elif (
+            "ffmpeg" in lower_message
+            or "ffprobe" in lower_message
+        ):
             message = (
-                "انتهت مهلة الاتصال بالمنصة. حاول مرة أخرى "
-                "وتأكد أن رابط الفيديو متاح."
+                "السيرفر يحتاج FFmpeg لمعالجة هذا الملف. "
+                "تحقق من تثبيته في Dockerfile."
             )
+
+        elif (
+            "403" in lower_message
+            or "forbidden" in lower_message
+        ):
+            message = (
+                "المنصة رفضت طلب التحميل مؤقتًا. "
+                "جرّب رابطًا عامًا آخر."
+            )
+
+        else:
+            message = message[:500]
 
         raise HTTPException(
             status_code=400,
-            detail=f"فشل التحميل: {message[:700]}",
+            detail=f"فشل التحميل: {message}",
         )
