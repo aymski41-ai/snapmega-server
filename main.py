@@ -307,23 +307,29 @@ def base_ydl_options(output_dir: str) -> dict:
 
 
 def apply_youtube_options(options: dict) -> dict:
-    options["format"] = "b/best"
+    options["format"] = "best[height<=1080]/bestvideo+bestaudio/best"
     options["merge_output_format"] = "mp4"
 
     cookie_path = get_valid_cookie_path()
     if cookie_path:
         options["cookiefile"] = cookie_path
         print(f"[SnapMega] Active YouTube cookies from: {cookie_path}", flush=True)
-    else:
-        print("[SnapMega] WARNING: YouTube cookies.txt not found.", flush=True)
 
+    # تبديل العملاء إلى TV و Android Creator لتفادي حظر مراكز البيانات
     options["extractor_args"] = {
         "youtube": {
-            "player_client": ["android", "web"],
+            "player_client": ["tv", "android_creator", "mweb"],
+            "player_skip": ["webpage", "configs"],
         }
     }
-    return options
 
+    # إضافة ترويسة متوافقة
+    options["http_headers"] = {
+        "User-Agent": "com.google.android.youtube/19.09.37 (Linux; U; Android 14) gzip",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+
+    return options
 
 def apply_audio_options(options: dict) -> dict:
     options["format"] = "bestaudio/best"
