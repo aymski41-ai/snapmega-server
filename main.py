@@ -1,4 +1,3 @@
-
 import os
 import re
 import shutil
@@ -179,6 +178,7 @@ def configure_platform(options: dict, url: str) -> dict:
             },
         })
 
+   
     elif "instagram.com" in host:
         options.update({
             "format": (
@@ -196,7 +196,12 @@ def configure_platform(options: dict, url: str) -> dict:
             },
         })
 
-    return options
+        instagram_cookies = (
+            Path(__file__).resolve().parent / "instagram_cookies.txt"
+        )
+        if instagram_cookies.is_file():
+            options["cookiefile"] = str(instagram_cookies)
+
 
 
 def validate_media_url(url: str) -> None:
