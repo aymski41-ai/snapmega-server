@@ -1,3 +1,4 @@
+
 import os
 import re
 import shutil
@@ -90,15 +91,24 @@ def time_to_seconds(value: str) -> float:
     return numbers[0]
 
 
+# YouTube: تحسين اختيار الصيغة مع الحفاظ على ملف cookies الاختياري
 def apply_youtube_options(options: dict) -> dict:
     options["format"] = (
         "best[height<=360][ext=mp4]/"
         "best[height<=360]/"
-        "worst[ext=mp4]/worst"
+        "bestvideo[height<=360]+bestaudio/"
+        "bestvideo+bestaudio/best"
     )
     options["merge_output_format"] = "mp4"
     options["noplaylist"] = True
     options["socket_timeout"] = 30
+    options["retries"] = 3
+    options["fragment_retries"] = 3
+    options["extractor_retries"] = 3
+    options["http_headers"] = {
+        "User-Agent": USER_AGENT,
+        "Referer": "https://www.youtube.com/",
+    }
 
     cookie_path = Path(__file__).resolve().parent / "cookies.txt"
     if cookie_path.is_file():
@@ -109,9 +119,8 @@ def apply_youtube_options(options: dict) -> dict:
 
 def configure_platform(options: dict, url: str) -> dict:
     host = get_host(url)
-    lower_url = url.lower()
 
-    # Default video quality: up to 360p when available
+    # Default video quality
     options["format"] = (
         "best[height<=360][ext=mp4]/"
         "best[height<=360]/"
@@ -122,9 +131,17 @@ def configure_platform(options: dict, url: str) -> dict:
         "User-Agent": USER_AGENT,
     }
 
-    if host == "youtube.com" or host.endswith(".youtube.com") or host == "youtu.be":
+    # YouTube: adjusted separately
+    if (
+        host == "youtube.com"
+        or host.endswith(".youtube.com")
+        or host == "youtu.be"
+        or host == "youtube-nocookie.com"
+        or host.endswith(".youtube-nocookie.com")
+    ):
         options = apply_youtube_options(options)
 
+    # Kick: preserved
     elif host == "kick.com" or host.endswith(".kick.com"):
         options.update({
             "format": (
@@ -144,6 +161,7 @@ def configure_platform(options: dict, url: str) -> dict:
             },
         })
 
+    # Facebook: preserved
     elif "facebook.com" in host or host == "fb.watch":
         options.update({
             "format": (
@@ -161,6 +179,7 @@ def configure_platform(options: dict, url: str) -> dict:
             },
         })
 
+    # TikTok: preserved
     elif "tiktok.com" in host:
         options.update({
             "format": (
@@ -178,7 +197,7 @@ def configure_platform(options: dict, url: str) -> dict:
             },
         })
 
-   
+    # Instagram: adjusted separately; cookies remain optional
     elif "instagram.com" in host:
         options.update({
             "format": (
@@ -189,7 +208,8 @@ def configure_platform(options: dict, url: str) -> dict:
             "merge_output_format": "mp4",
             "retries": 3,
             "fragment_retries": 3,
-            "extractor_retries": 2,
+            "extractor_retries": 3,
+            "socket_timeout": 30,
             "http_headers": {
                 "User-Agent": USER_AGENT,
                 "Referer": "https://www.instagram.com/",
@@ -202,6 +222,8 @@ def configure_platform(options: dict, url: str) -> dict:
         if instagram_cookies.is_file():
             options["cookiefile"] = str(instagram_cookies)
 
+    # Important: every platform returns its options
+    return options
 
 
 def validate_media_url(url: str) -> None:
@@ -209,7 +231,7 @@ def validate_media_url(url: str) -> None:
     path = urlparse(url).path.lower()
     query = urlparse(url).query.lower()
 
-    # A TikTok photo post is not a normal video URL
+    # TikTok photo posts are not normal video URLs
     if "tiktok.com" in host and "/photo/" in path:
         raise HTTPException(
             status_code=400,
@@ -219,11 +241,9 @@ def validate_media_url(url: str) -> None:
             ),
         )
 
-    # A Facebook watch URL without a video ID is incomplete
+    # Facebook watch URL without a video ID
     if "facebook.com" in host and path.rstrip("/") == "/watch":
-        has_video_id = bool(
-            re.search(r"(?:^|&)v=\d+", query)
-        )
+        has_video_id = bool(re.search(r"(?:^|&)v=\d+", query))
         if not has_video_id:
             raise HTTPException(
                 status_code=400,
@@ -352,6 +372,12 @@ def download_media(req: DownloadRequest):
             ".webm": "video/webm",
             ".mkv": "video/x-matroska",
             ".mov": "video/quicktime",
+            ".m4v": "video/mp4",
+            ".aac": "audio/aac",
+            ".opus": "audio/opus",
+            ".ogg": "audio/ogg",
+            ".wav": "audio/wav",
+            ".flac": "audio/flac",
         }
 
         return FileResponse(
