@@ -3,6 +3,7 @@ import os
 import re
 import shutil
 import tempfile
+import logging
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -13,6 +14,9 @@ from starlette.background import BackgroundTask
 from pydantic import BaseModel
 import yt_dlp
 
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("snapmega")
 
 app = FastAPI(title="SnapMega Server")
 
@@ -33,9 +37,14 @@ class DownloadRequest(BaseModel):
 
 
 ALLOWED_DOMAINS = {
-    "youtube.com", "youtu.be", "youtube-nocookie.com",
-    "tiktok.com", "instagram.com", "facebook.com",
-    "fb.watch", "kick.com",
+    "youtube.com",
+    "youtu.be",
+    "youtube-nocookie.com",
+    "tiktok.com",
+    "instagram.com",
+    "facebook.com",
+    "fb.watch",
+    "kick.com",
 }
 
 AUDIO_EXTENSIONS = {
@@ -51,6 +60,8 @@ USER_AGENT = (
     "AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/131.0.0.0 Safari/537.36"
 )
+
+BASE_DIR = Path(__file__).resolve().parent
 
 
 def get_host(url: str) -> str:
@@ -91,47 +102,59 @@ def time_to_seconds(value: str) -> float:
     return numbers[0]
 
 
-# YouTube: تحسين اختيار الصيغة مع الحفاظ على ملف cookies الاختياري
+def apply_optional_cookies(options: dict, *filenames: str) -> None:
+    """Use the first available cookie file, if one exists."""
+    for filename in filenames:
+        cookie_path = BASE_DIR / filename
+
+        if cookie_path.is_file() and cookie_path.stat().st_size > 0:
+            options["cookiefile"] = str(cookie_path)
+            logger.info("Using cookie file: %s", filename)
+            return
+
+
+# YouTube: flexible formats and optional cookies
 def apply_youtube_options(options: dict) -> dict:
-    options["format"] = (
-        "best[height<=360][ext=mp4]/"
-        "best[height<=360]/"
-        "bestvideo[height<=360]+bestaudio/"
-        "bestvideo+bestaudio/best"
-    )
-    options["merge_output_format"] = "mp4"
-    options["noplaylist"] = True
-    options["socket_timeout"] = 30
-    options["retries"] = 3
-    options["fragment_retries"] = 3
-    options["extractor_retries"] = 3
-    options["http_headers"] = {
-        "User-Agent": USER_AGENT,
-        "Referer": "https://www.youtube.com/",
-    }
+    options.update({
+        "format": (
+            "best[height<=360][ext=mp4]/"
+            "best[height<=360]/"
+            "bestvideo[height<=360]+bestaudio/"
+            "bestvideo+bestaudio/best"
+        ),
+        "merge_output_format": "mp4",
+        "noplaylist": True,
+        "socket_timeout": 45,
+        "retries": 3,
+        "fragment_retries": 3,
+        "extractor_retries": 3,
+        "http_headers": {
+            "User-Agent": USER_AGENT,
+            "Referer": "https://www.youtube.com/",
+        },
+    })
 
-    cookie_path = Path(__file__).resolve().parent / "cookies.txt"
-    if cookie_path.is_file():
-        options["cookiefile"] = str(cookie_path)
-
+    apply_optional_cookies(options, "cookies.txt")
     return options
 
 
 def configure_platform(options: dict, url: str) -> dict:
     host = get_host(url)
 
-    # Default video quality
-    options["format"] = (
-        "best[height<=360][ext=mp4]/"
-        "best[height<=360]/"
-        "worst[ext=mp4]/worst"
-    )
-    options["merge_output_format"] = "mp4"
-    options["http_headers"] = {
-        "User-Agent": USER_AGENT,
-    }
+    # Default options
+    options.update({
+        "format": (
+            "best[height<=360][ext=mp4]/"
+            "best[height<=360]/"
+            "worst[ext=mp4]/worst"
+        ),
+        "merge_output_format": "mp4",
+        "http_headers": {
+            "User-Agent": USER_AGENT,
+        },
+    })
 
-    # YouTube: adjusted separately
+    # YouTube
     if (
         host == "youtube.com"
         or host.endswith(".youtube.com")
@@ -139,9 +162,9 @@ def configure_platform(options: dict, url: str) -> dict:
         or host == "youtube-nocookie.com"
         or host.endswith(".youtube-nocookie.com")
     ):
-        options = apply_youtube_options(options)
+        apply_youtube_options(options)
 
-    # Kick: preserved
+    # Kick: existing settings preserved
     elif host == "kick.com" or host.endswith(".kick.com"):
         options.update({
             "format": (
@@ -161,7 +184,7 @@ def configure_platform(options: dict, url: str) -> dict:
             },
         })
 
-    # Facebook: preserved
+    # Facebook: existing settings preserved
     elif "facebook.com" in host or host == "fb.watch":
         options.update({
             "format": (
@@ -179,7 +202,7 @@ def configure_platform(options: dict, url: str) -> dict:
             },
         })
 
-    # TikTok: preserved
+    # TikTok: existing settings preserved
     elif "tiktok.com" in host:
         options.update({
             "format": (
@@ -197,47 +220,41 @@ def configure_platform(options: dict, url: str) -> dict:
             },
         })
 
-    # Instagram: adjusted separately; cookies remain optional
+    # Instagram: corrected indentation and cookie fallback
     elif "instagram.com" in host:
         options.update({
             "format": (
                 "best[height<=360][ext=mp4]/"
                 "best[height<=360]/"
-                "worst[ext=mp4]/worst"
+                "best[ext=mp4]/best"
             ),
             "merge_output_format": "mp4",
             "retries": 3,
             "fragment_retries": 3,
             "extractor_retries": 3,
-            "socket_timeout": 30,
+            "socket_timeout": 45,
             "http_headers": {
                 "User-Agent": USER_AGENT,
                 "Referer": "https://www.instagram.com/",
             },
         })
 
-   instagram_cookies = (
-            Path(__file__).resolve().parent / "instagram_cookies.txt"
+        # Prefer Instagram-specific cookies; otherwise try cookies.txt
+        apply_optional_cookies(
+            options,
+            "instagram_cookies.txt",
+            "cookies.txt",
         )
-        if not instagram_cookies.is_file():
-             
-   instagram_cookies = (
-                Path(__file__).resolve().parent / "cookies.txt"
-            )
 
-        if instagram_cookies.is_file():
-            options["cookiefile"] = str(instagram_cookies)
-
-    # Important: every platform returns its options
     return options
 
 
 def validate_media_url(url: str) -> None:
     host = get_host(url)
-    path = urlparse(url).path.lower()
-    query = urlparse(url).query.lower()
+    parsed = urlparse(url)
+    path = parsed.path.lower()
+    query = parsed.query.lower()
 
-    # TikTok photo posts are not normal video URLs
     if "tiktok.com" in host and "/photo/" in path:
         raise HTTPException(
             status_code=400,
@@ -247,15 +264,14 @@ def validate_media_url(url: str) -> None:
             ),
         )
 
-    # Facebook watch URL without a video ID
     if "facebook.com" in host and path.rstrip("/") == "/watch":
         has_video_id = bool(re.search(r"(?:^|&)v=\d+", query))
         if not has_video_id:
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    "رابط Facebook ناقص: صفحة watch وحدها لا تكفي. "
-                    "انسخ رابط الفيديو نفسه أو رابط المشاركة الكامل."
+                    "رابط Facebook ناقص. انسخ رابط الفيديو نفسه "
+                    "أو رابط المشاركة الكامل."
                 ),
             )
 
@@ -318,7 +334,7 @@ def download_media(req: DownloadRequest):
         "quiet": True,
         "no_warnings": True,
         "noplaylist": True,
-        "socket_timeout": 30,
+        "socket_timeout": 45,
         "retries": 3,
         "fragment_retries": 3,
         "extractor_retries": 2,
@@ -344,6 +360,13 @@ def download_media(req: DownloadRequest):
                 }]
             )
             options["force_keyframes_at_cuts"] = True
+
+        logger.info(
+            "Download requested: host=%s mode=%s yt_dlp=%s",
+            get_host(url),
+            mode,
+            yt_dlp.version.__version__,
+        )
 
         with yt_dlp.YoutubeDL(options) as ydl:
             ydl.extract_info(url, download=True)
@@ -405,6 +428,12 @@ def download_media(req: DownloadRequest):
         raise
 
     except Exception as exc:
+        logger.exception(
+            "Download failed: host=%s mode=%s",
+            get_host(url),
+            mode,
+        )
+
         shutil.rmtree(output_dir, ignore_errors=True)
 
         message = str(exc)
@@ -414,16 +443,27 @@ def download_media(req: DownloadRequest):
         lower_message = message.lower()
 
         if any(word in lower_message for word in (
-            "login", "log in", "sign in", "private", "checkpoint"
+            "login", "log in", "sign in", "private", "checkpoint",
+            "challenge_required", "consent_required",
         )):
             message = (
-                "المنصة تطلب تسجيل الدخول أو أن المحتوى خاص. "
-                "جرّب رابط فيديو عام آخر."
+                "المنصة تطلب تسجيل الدخول أو التحقق من الحساب. "
+                "جرّب رابطًا عامًا وتأكد من صلاحية ملف cookies."
+            )
+        elif "no video formats found" in lower_message:
+            message = (
+                "لم يتم العثور على صيغ فيديو. قد يكون المنشور صورة، "
+                "أو أن Instagram يتطلب جلسة صالحة أو يمنع طلب السيرفر."
+            )
+        elif "failed to extract any player response" in lower_message:
+            message = (
+                "YouTube لم يرجع بيانات المشغل المطلوبة. "
+                "تحقق من إصدار yt-dlp وإعدادات PO Token في Render."
             )
         elif "unsupported url" in lower_message:
             message = (
                 "المنصة لم تتعرف على هذا الرابط. "
-                "تأكد أنه رابط فيديو كامل وعام، وليس رابط صفحة أو صور."
+                "تأكد أنه رابط فيديو كامل ومدعوم."
             )
 
         raise HTTPException(
