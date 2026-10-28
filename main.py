@@ -325,17 +325,23 @@ def download_media(req: DownloadRequest):
     output_dir = tempfile.mkdtemp(prefix="snapmega_")
     output_template = os.path.join(output_dir, "%(id)s.%(ext)s")
 
-    options = {
-        "outtmpl": output_template,
-        "quiet": True,
-        "no_warnings": True,
-        "noplaylist": True,
-        "socket_timeout": 45,
-        "retries": 3,
-        "fragment_retries": 3,
-        "extractor_retries": 2,
-        "ignoreerrors": False,
-    }
+   options = {
+    "outtmpl": output_template,
+    "quiet": True,
+    "no_warnings": True,
+    "noplaylist": True,
+
+    # تقليل وقت الانتظار عند فشل الاتصال
+    "socket_timeout": 20,
+    "retries": 1,
+    "fragment_retries": 1,
+    "extractor_retries": 1,
+
+    # تسريع تحميل الأجزاء عندما تكون المنصة تدعم ذلك
+    "concurrent_fragment_downloads": 4,
+
+    "ignoreerrors": False,
+}
 
     try:
         options = configure_platform(options, url)
