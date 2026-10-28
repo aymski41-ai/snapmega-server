@@ -216,9 +216,15 @@ def configure_platform(options: dict, url: str) -> dict:
             },
         })
 
-        instagram_cookies = (
+   instagram_cookies = (
             Path(__file__).resolve().parent / "instagram_cookies.txt"
         )
+        if not instagram_cookies.is_file():
+             
+   instagram_cookies = (
+                Path(__file__).resolve().parent / "cookies.txt"
+            )
+
         if instagram_cookies.is_file():
             options["cookiefile"] = str(instagram_cookies)
 
