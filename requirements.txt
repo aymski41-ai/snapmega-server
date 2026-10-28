@@ -5,4 +5,3 @@ yt-dlp[default]>=2026.10.26
 bgutil-ytdlp-pot-provider==2.0.2
 curl-cffi>=0.13,<1
 requests>=2.32,<3
-
